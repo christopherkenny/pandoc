@@ -46,6 +46,7 @@
   region: "US",
   font: (),
   fontsize: 11pt,
+  linestretch: 1,
   sectionnumbering: none,
   doc,
 ) = {
