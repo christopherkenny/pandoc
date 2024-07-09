@@ -72,6 +72,12 @@ $endif$
 $if(fontsize)$
   fontsize: $fontsize$,
 $endif$
+$if(mathfont)$
+  mathfont: ($for(mathfont)$"$mathfont$",$endfor$),
+$endif$
+$if(codefont)$
+  codefont: ($for(codefont)$"$codefont$",$endfor$),
+$endif$
 $if(linestretch)$
   linestretch: $linestretch$,
 $endif$

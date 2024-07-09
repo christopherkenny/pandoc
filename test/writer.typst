@@ -46,6 +46,8 @@
   region: "US",
   font: (),
   fontsize: 11pt,
+  mathfont: "New Computer Modern Math",
+  codefont: "DejaVu Sans Mono",
   linestretch: 1,
   sectionnumbering: none,
   doc,
@@ -68,6 +70,8 @@
            region: region,
            font: font,
            size: fontsize)
+  show math.equation: set text(font: mathfont)
+  show raw: set text(font: codefont)
   set heading(numbering: sectionnumbering)
 
   if title != none {
