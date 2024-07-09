@@ -72,6 +72,9 @@ $endif$
 $if(fontsize)$
   fontsize: $fontsize$,
 $endif$
+$if(linestretch)$
+  linestretch: $linestretch$,
+$endif$
 $if(section-numbering)$
   sectionnumbering: "$section-numbering$",
 $endif$

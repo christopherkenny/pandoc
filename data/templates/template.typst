@@ -24,6 +24,7 @@
   region: "US",
   font: (),
   fontsize: 11pt,
+  linestretch: 1,
   sectionnumbering: none,
   doc,
 ) = {
@@ -37,7 +38,10 @@
     margin: margin,
     numbering: "1",
   )
-  set par(justify: true)
+  set par(
+    justify: true,
+    leading: linestretch * 0.65em
+  )
   set text(lang: lang,
            region: region,
            font: font,
