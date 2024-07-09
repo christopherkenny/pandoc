@@ -57,6 +57,9 @@ $endif$
 $if(abstract)$
   abstract: [$abstract$],
 $endif$
+$if(thanks)$
+  thanks: [$thanks$],
+$endif$
 $if(margin)$
   margin: ($for(margin/pairs)$$margin.key$: $margin.value$,$endfor$),
 $endif$

@@ -38,6 +38,7 @@
   keywords: (),
   date: none,
   abstract: none,
+  thanks: none,
   cols: 1,
   margin: (x: 1.25in, y: 1.25in),
   paper: "us-letter",
@@ -67,7 +68,10 @@
 
   if title != none {
     align(center)[#block(inset: 2em)[
-      #text(weight: "bold", size: 1.5em)[#title]
+      #text(weight: "bold", size: 1.5em)[#title #if thanks != none {
+            footnote(thanks, numbering: "*")
+            counter(footnote).update(n => n - 1)
+          }]
       #(if subtitle != none {
         parbreak()
         text(weight: "bold", size: 1.25em)[#subtitle]
