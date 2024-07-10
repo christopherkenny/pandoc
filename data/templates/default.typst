@@ -84,6 +84,15 @@ $endif$
 $if(section-numbering)$
   sectionnumbering: "$section-numbering$",
 $endif$
+$if(linkcolor)$
+  linkcolor: [$linkcolor$],
+$endif$
+$if(citecolor)$
+  citecolor: [$citecolor$],
+$endif$
+$if(toccolor)$
+  toccolor: [$toccolor$],
+$endif$
   cols: $if(columns)$$columns$$else$1$endif$,
   doc,
 )
