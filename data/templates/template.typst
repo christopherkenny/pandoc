@@ -79,7 +79,7 @@
     ]]
   }
 
-  if authors != none and authors != [] {
+  #if authors != none and authors != [] {
     let count = authors.len()
     let ncols = calc.min(count, 3)
     grid(
@@ -95,21 +95,18 @@
     )
   }
 
-  if date != none {
+  #if date != none {
     align(center)[#block(inset: 1em)[
       #date
     ]]
   }
 
-  if abstract != none {
+  #if abstract != none {
     block(inset: 2em)[
     #text(weight: "semibold")[Abstract] #h(1em) #abstract
     ]
   }
+  ]
 
-  if cols == 1 {
-    doc
-  } else {
-    columns(cols, doc)
-  }
+doc
 }
