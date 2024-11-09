@@ -31,6 +31,7 @@
   linkcolor: ["#800000"],
   citecolor: ["#0000FF"],
   toccolor: ["#800000"],
+  pagenumbering: "1",
   doc,
 ) = {
   set document(
@@ -41,12 +42,15 @@
   set page(
     paper: paper,
     margin: margin,
-    numbering: "1",
+    numbering: pagenumbering,
   )
+
   set par(
     justify: true,
-    leading: linestretch * 0.65em
+    leading: linestretch * 0.65em,
+    numbering: pagenumbering,
   )
+
   set text(lang: lang,
            region: region,
            font: font,
