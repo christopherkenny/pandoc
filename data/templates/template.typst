@@ -35,7 +35,7 @@
 ) = {
   set document(
     title: title,
-    author: authors.map(author => content-to-string(author.name)).join(", ", last: ", and "),
+    author: authors.map(author => content-to-string(author.name)).join(", ", last: " & "),
     keywords: keywords,
   )
   set page(
