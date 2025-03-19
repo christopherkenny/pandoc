@@ -522,7 +522,8 @@ pandocToEPUB version opts doc = do
                   , writerWrapText = WrapAuto }
 
   -- cover page
-  (cpgEntry, cpicEntry) <- createCoverPage meta metadata opts' vars cssvars writeHtml plainTitle
+  (cpgEntry, cpicEntry, mbCoverImageName) <-
+    createCoverPage meta metadata opts' vars cssvars writeHtml plainTitle
 
   -- title page
   tpContent <- lift $ writeHtml opts'{
@@ -642,7 +643,7 @@ pandocToEPUB version opts doc = do
            [("xml:lang", epubLanguage metadata) | version == EPUB3] ++
            [("unique-identifier","epub-id-1")] ++
            [("prefix","ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/") | version == EPUB3]) $
-          [ metadataElement version metadata currentTime
+          [ metadataElement version metadata mbCoverImageName currentTime
           , unode "manifest" $
              [ unode "item" ! [("id","ncx"), ("href","toc.ncx")
                               ,("media-type","application/x-dtbncx+xml")] $ ()
@@ -742,6 +743,7 @@ pandocToEPUB version opts doc = do
 -- | Function used during conversion from pandoc to EPUB to create the cover page.
 -- The first Entry list is for the cover while the second one is for the cover image.
 -- If no cover images are specified, empty lists will be returned.
+-- The third value of the returned tuple is the cover image name.
 createCoverPage :: PandocMonad m =>
                    Meta
                    -> EPUBMetadata
@@ -750,18 +752,14 @@ createCoverPage :: PandocMonad m =>
                    -> (Bool -> Context Text)
                    -> (WriterOptions -> Pandoc -> m B8.ByteString)
                    -> Text
-                   -> StateT EPUBState m ([Entry], [Entry])
+                   -> StateT EPUBState m ([Entry], [Entry], Maybe FilePath)
 createCoverPage meta metadata opts' vars cssvars writeHtml plainTitle =
     case epubCoverImage metadata of
-        Nothing   -> return ([],[])
+        Nothing   -> return ([],[], Nothing)
         Just img  -> do
           let fp = takeFileName img
           -- retrieve cover image file
-          mediaPaths <- gets (map (fst . snd) . stMediaPaths)
-          coverImageName <-  -- see #4206
-                if ("media/" <> fp) `elem` mediaPaths
-                  then getMediaNextNewName (takeExtension fp)
-                  else return fp
+          coverImageName <- getMediaNextNewName (takeExtension fp) -- see #4206
           -- image dimensions
           imgContent <- lift $ P.readFileLazy img
           (coverImageWidth, coverImageHeight) <-
@@ -789,7 +787,7 @@ createCoverPage meta metadata opts' vars cssvars writeHtml plainTitle =
           coverImageEntry <- mkEntry ("media/" ++ coverImageName)
                                 imgContent
 
-          return ( [ coverEntry ], [ coverImageEntry ] )
+          return ( [ coverEntry ], [ coverImageEntry ], Just coverImageName )
 
 -- | Converts the given chapters to entries using the writeHtml function
 -- and the various provided options
@@ -924,7 +922,7 @@ createNavEntry opts meta metadata
           subs <- catMaybes <$> mapM mkItem subsecs
           let secnum' = case secNumber secinfo of
                           Just num -> [Span ("", ["section-header-number"], [])
-                                       [Str num] , Space]
+                                       [Str num] , Str "\160"]
                           Nothing -> []
           let title' = secnum' <> secTitle secinfo
           -- can't have <a> elements inside generated links...
@@ -996,8 +994,9 @@ createNavEntry opts meta metadata
   -- Return
   mkEntry "nav.xhtml" navData
 
-metadataElement :: EPUBVersion -> EPUBMetadata -> UTCTime -> Element
-metadataElement version md currentTime =
+metadataElement :: EPUBVersion -> EPUBMetadata -> Maybe FilePath -> UTCTime
+                -> Element
+metadataElement version md mbCoverImage currentTime =
   unode "metadata" ! [("xmlns:dc","http://purl.org/dc/elements/1.1/")
                      ,("xmlns:opf","http://www.idpf.org/2007/opf")] $ mdNodes
   where mdNodes = identifierNodes ++ titleNodes ++ dateNodes
@@ -1052,7 +1051,7 @@ metadataElement version md currentTime =
             (\img -> [unode "meta" !  [(metaprop,"cover"),
                                        ("content",toId img)] $ ()
                         | version == EPUB2])
-            $ epubCoverImage md
+            $ mbCoverImage
         modifiedNodes = [ unode "meta" ! [(metaprop, "dcterms:modified")] $
                showDateTimeISO8601 currentTime | version == EPUB3 ]
         belongsToCollectionNodes =

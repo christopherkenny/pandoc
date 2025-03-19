@@ -235,10 +235,11 @@ blockHandlers = M.fromList
   ,("quote", \_ fields -> do
       getField "block" fields >>= guard
       body <- getField "body" fields >>= pWithContents pBlocks
-      attribution <-
-        ((\x -> B.para ("\x2104\xa0" <> x)) <$>
-          (getField "attribution" fields >>= pWithContents pInlines))
-        <|> pure mempty
+      attribution' <- getField "attribution" fields
+      attribution <- if attribution' == mempty
+                        then pure mempty
+                        else (\x -> B.para ("\x2014\xa0" <> x)) <$>
+                              (pWithContents pInlines attribution')
       pure $ B.blockQuote $ body <> attribution)
   ,("list", \_ fields -> do
       children <- V.toList <$> getField "children" fields
@@ -294,7 +295,7 @@ blockHandlers = M.fromList
       pure $ B.codeBlockWith attr txt)
   ,("parbreak", \_ _ -> pure mempty)
   ,("block", \mbident fields ->
-      B.divWith (fromMaybe "" mbident, [], [])
+      maybe id (\ident -> B.divWith (ident, [], [])) mbident
         <$> (getField "body" fields >>= pWithContents pBlocks))
   ,("place", \_ fields -> do
       ignored "parameters of place"
@@ -503,6 +504,9 @@ inlineHandlers = M.fromList
       (if display then B.displayMath else B.math) . writeTeX <$> pMathMany body)
   ,("pad", \_ fields ->  -- ignore paddingy
       getField "body" fields >>= pWithContents pInlines)
+  ,("block", \mbident fields ->
+      maybe id (\ident -> B.spanWith (ident, [], [])) mbident
+        <$> (getField "body" fields >>= pWithContents pInlines))
   ]
 
 getInlineBody :: PandocMonad m => M.Map Identifier Val -> P m (Seq Content)
@@ -519,9 +523,12 @@ parbreaksToLinebreaks =
    isParbreak _ = False
 
 pPara :: PandocMonad m => P m B.Blocks
-pPara =
-  B.para . B.trimInlines . collapseAdjacentCites . mconcat
-    <$> (many1 pInline <* optional pParBreak)
+pPara = do
+  ils <- B.trimInlines . collapseAdjacentCites . mconcat <$> many1 pInline
+  optional pParBreak
+  pure $ if ils == mempty
+         then mempty
+         else B.para ils
 
 pParBreak :: PandocMonad m => P m ()
 pParBreak =

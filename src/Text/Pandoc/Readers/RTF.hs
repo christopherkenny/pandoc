@@ -19,6 +19,7 @@ import qualified Data.IntMap as IntMap
 import qualified Data.Sequence as Seq
 import Control.Monad
 import Control.Monad.Except (throwError)
+import Crypto.Hash (hashWith, SHA1(SHA1))
 import Data.List (find, foldl')
 import Data.Word (Word8, Word16)
 import Data.Default
@@ -35,7 +36,6 @@ import Text.Pandoc.Logging (LogMessage(UnsupportedCodePage))
 import Text.Pandoc.Shared (tshow)
 import Data.Char (isAlphaNum, chr, isAscii, isLetter, isSpace, ord)
 import qualified Data.ByteString.Lazy as BL
-import Data.Digest.Pure.SHA (sha1, showDigest)
 import Data.Maybe (mapMaybe, fromMaybe)
 import Safe (lastMay, initSafe, headDef)
 -- import Debug.Trace
@@ -428,10 +428,23 @@ processTok bs (Tok pos tok') = do
     UnformattedText{} -> return ()
     _ -> updateState $ \s -> s{ sEatChars = 0 }
   case tok' of
-    Grouped (Tok _ (ControlSymbol '*') : toks) ->
-      bs <$ (do oldTextContent <- sTextContent <$> getState
-                processTok mempty (Tok pos (Grouped toks))
-                updateState $ \st -> st{ sTextContent = oldTextContent })
+    Grouped (Tok _ (ControlSymbol '*') : toks@(firsttok:_)) ->
+      case firsttok of
+        Tok _ (ControlWord "shppict" _) -> inGroup (foldM processTok bs toks)
+        Tok _ (ControlWord "shpinst" _) -> inGroup (foldM processTok bs toks)
+        _ -> bs <$ (do oldTextContent <- sTextContent <$> getState
+                       processTok mempty (Tok pos (Grouped toks))
+                       updateState $ \st -> st{ sTextContent = oldTextContent })
+    Grouped (Tok _ (ControlWord "shp" _) : toks) ->
+      inGroup (foldM processTok bs toks)
+    Grouped [ Tok _ (ControlWord "sp" _)
+            , Tok _ (Grouped [Tok _ (ControlWord "sn" _),
+                      Tok _ (UnformattedText sn)])
+            , Tok _ (Grouped (Tok _ (ControlWord "sv" _) : svtoks))
+            ] ->
+      case sn of
+        "pib" -> inGroup (foldM processTok bs svtoks)
+        _ -> pure bs
     Grouped (Tok _ (ControlWord "fonttbl" _) : toks) -> inGroup $ do
       updateState $ \s -> s{ sFontTable = processFontTable toks }
       pure bs
@@ -907,7 +920,7 @@ handlePict toks = do
           Nothing -> (Nothing, "")
   case mimetype of
     Just mt -> do
-      let pictname = showDigest (sha1 bytes) <> ext
+      let pictname = show (hashWith SHA1 $ BL.toStrict bytes) <> ext
       insertMedia pictname (Just mt) bytes
       modifyGroup $ \g -> g{ gImage = Just pict{ picName = T.pack pictname,
                                                  picBytes = bytes } }

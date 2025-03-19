@@ -1,7 +1,7 @@
 ---
 title: Pandoc User's Guide
 author: John MacFarlane
-date: June 24, 2024
+date: March 16, 2025
 ---
 
 # Synopsis
@@ -144,7 +144,8 @@ contains images), [`bookmark`], [`xcolor`],
 [`soul`], [`geometry`] (with the `geometry` variable set),
 [`setspace`] (with `linestretch`), and
 [`babel`] (with `lang`).  If `CJKmainfont` is set, [`xeCJK`]
-is needed. [`framed`] is required if code is highlighted in a
+is needed if `xelatex` is used, else [`luatexja`] is needed if
+`lualatex` is used. [`framed`] is required if code is highlighted in a
 scheme that use a colored background. The use of `xelatex` or
 `lualatex` as the PDF engine requires [`fontspec`]. `lualatex`
 uses [`selnolig`] and [`lua-ul`]. `xelatex` uses [`bidi`] (with
@@ -186,6 +187,7 @@ better line breaks in URLs), and [`footnotehyper`] or
 [`listings`]: https://ctan.org/pkg/listings
 [`lm`]: https://ctan.org/pkg/lm
 [`lua-ul`]: https://ctan.org/pkg/lua-ul
+[`luatexja`]: https://ctan.org/pkg/luatexja
 [`longtable`]: https://ctan.org/pkg/longtable
 [`mathspec`]: https://ctan.org/pkg/mathspec
 [`microtype`]: https://ctan.org/pkg/microtype
@@ -261,11 +263,13 @@ header when requesting a document from a URL:
     - `markdown_strict` (original unextended [Markdown])
     - `mediawiki` ([MediaWiki markup])
     - `man` ([roff man])
+    - `mdoc` ([mdoc] manual page markup)
     - `muse` ([Muse])
     - `native` (native Haskell)
-    - `odt` ([OpenOffice text document][ODT])
+    - `odt` ([OpenDocument text document][ODT])
     - `opml` ([OPML])
     - `org` ([Emacs Org mode])
+    - `pod` (Perl's [Plain Old Documentation])
     - `ris` ([RIS] bibliography)
     - `rtf` ([Rich Text Format])
     - `rst` ([reStructuredText])
@@ -289,6 +293,7 @@ header when requesting a document from a URL:
 :   Specify output format.  *FORMAT* can be:
 
     ::: {#output-formats}
+    - `ansi` (text with [ANSI escape codes], for terminal viewing)
     - `asciidoc` (modern [AsciiDoc] as interpreted by [AsciiDoctor])
     - `asciidoc_legacy` ([AsciiDoc] as interpreted by [`asciidoc-py`]).
     - `asciidoctor` (deprecated synonym for `asciidoc`)
@@ -334,9 +339,9 @@ header when requesting a document from a URL:
     - `ms` ([roff ms])
     - `muse` ([Muse])
     - `native` (native Haskell)
-    - `odt` ([OpenOffice text document][ODT])
+    - `odt` ([OpenDocument text document][ODT])
     - `opml` ([OPML])
-    - `opendocument` ([OpenDocument])
+    - `opendocument` ([OpenDocument XML])
     - `org` ([Emacs Org mode])
     - `pdf` ([PDF])
     - `plain` (plain text)
@@ -466,6 +471,7 @@ header when requesting a document from a URL:
 
 :   Show usage message.
 
+[ANSI escape codes]: https://en.wikipedia.org/wiki/ANSI_escape_code
 [Markdown]: https://daringfireball.net/projects/markdown/
 [CommonMark]: https://commonmark.org
 [PHP Markdown Extra]: https://michelf.ca/projects/php-markdown/extra/
@@ -492,8 +498,9 @@ header when requesting a document from a URL:
 [txt2tags]: https://txt2tags.org
 [EPUB]: http://idpf.org/epub
 [OPML]: http://dev.opml.org/spec2.html
-[OpenDocument]: http://opendocument.xml.org
+[OpenDocument XML]: https://www.oasis-open.org/2021/06/16/opendocument-v1-3-oasis-standard-published/
 [ODT]: https://en.wikipedia.org/wiki/OpenDocument
+[Plain Old Documentation]: https://perldoc.perl.org/perlpod
 [Textile]: https://textile-lang.com
 [MediaWiki markup]: https://www.mediawiki.org/wiki/Help:Formatting
 [DokuWiki markup]: https://www.dokuwiki.org/dokuwiki
@@ -511,7 +518,7 @@ header when requesting a document from a URL:
 [GNU Texinfo]: https://www.gnu.org/software/texinfo/
 [RIS]: https://en.wikipedia.org/wiki/RIS_(file_format)
 [Emacs Org mode]: https://orgmode.org
-[AsciiDoc]: https://www.methods.co.nz/asciidoc/
+[AsciiDoc]: https://asciidoc.org/
 [AsciiDoctor]: https://asciidoctor.org/
 [`asciidoc-py`]: https://github.com/asciidoc-py/asciidoc-py
 [DZSlides]: https://paulrouget.com/dzslides/
@@ -531,6 +538,7 @@ header when requesting a document from a URL:
 [Markua]: https://leanpub.com/markua/read
 [EndNote XML bibliography]: https://support.clarivate.com/Endnote/s/article/EndNote-XML-Document-Type-Definition
 [typst]: https://typst.app
+[mdoc]: https://mandoc.bsd.lv/man/mdoc.7.html
 
 ## Reader options {.options}
 
@@ -755,20 +763,24 @@ header when requesting a document from a URL:
 `--template=`*FILE*|*URL*
 
 :   Use the specified file as a custom template for the generated document.
-    Implies `--standalone`. See [Templates], below, for a description
-    of template syntax. If no extension is specified, an extension
-    corresponding to the writer will be added, so that `--template=special`
-    looks for `special.html` for HTML output.  If the template is not
-    found, pandoc will search for it in the `templates` subdirectory of
-    the user data directory (see `--data-dir`). If this option is not used,
-    a default template appropriate for the output format will be used (see
-    `-D/--print-default-template`).
+    Implies `--standalone`. See [Templates], below, for a
+    description of template syntax. If the template is not found,
+    pandoc will search for it in the `templates` subdirectory of
+    the user data directory (see `--data-dir`). If no extension
+    is specified and an extensionless template is not found,
+    pandoc will look for a template with an extension
+    corresponding to the writer, so that `--template=special`
+    looks for `special.html` for HTML output. If this option is
+    not used, a default template appropriate for the output
+    format will be used (see `-D/--print-default-template`).
 
 `-V` *KEY*[`=`*VAL*], `--variable=`*KEY*[`:`*VAL*]
 
-:   Set the template variable *KEY* to the value *VAL* when rendering the
-    document in standalone mode. If no *VAL* is specified, the
-    key will be given the value `true`.
+:   Set the template variable *KEY* to the string value *VAL* when rendering
+    the document in standalone mode. If no *VAL* is specified, the
+    key will be given the value `true`.  Structured values (lists, maps)
+    cannot be assigned using this option, but they can be assigned in
+    the `variables` section of a [defaults file][Defaults files].
 
 `--sandbox[=true|false]`
 
@@ -864,6 +876,22 @@ header when requesting a document from a URL:
 :   Specify the number of section levels to include in the table
     of contents.  The default is 3 (which means that level-1, 2, and 3
     headings will be listed in the contents).
+
+`--lof[=true|false]`, `--list-of-figures[=true|false]`
+
+:   Include an automatically generated list of figures (or, in
+    some formats, an instruction to create one) in the output
+    document. This option has no effect unless `-s/--standalone`
+    is used, and it only has an effect on `latex`, `context`, and
+    `docx` output.
+
+`--lot[=true|false]`, `--list-of-tables[=true|false]`
+
+:   Include an automatically generated list of tables (or, in
+    some formats, an instruction to create one) in the output
+    document. This option has no effect unless `-s/--standalone`
+    is used, and it only has an effect on `latex`, `context`, and
+    `docx` output.
 
 `--strip-comments[=true|false]`
 
@@ -1054,6 +1082,18 @@ header when requesting a document from a URL:
     specifying `--reference-location=section` will cause notes
     to be rendered at the bottom of a slide.
 
+`--figure-caption-position=above`|`below`
+
+:   Specify whether figure captions go above or below figures
+    (default is `below`).  This option only affects HTML,
+    LaTeX, Docx, ODT, and Typst output.
+
+`--table-caption-position=above`|`below`
+
+:   Specify whether table captions go above or below tables
+    (default is `above`).  This option only affects HTML,
+    LaTeX, Docx, ODT, and Typst output.
+
 `--markdown-headings=setext`|`atx`
 
 :   Specify whether to use ATX-style (`#`-prefixed) or
@@ -1069,7 +1109,7 @@ header when requesting a document from a URL:
 `--top-level-division=default`|`section`|`chapter`|`part`
 
 :   Treat top-level headings as the given division type in
-    LaTeX, ConTeXt, DocBook, and  TEI output. The hierarchy
+    LaTeX, ConTeXt, DocBook, and TEI output. The hierarchy
     order is part, chapter, then section; all headings are
     shifted such that the top-level heading becomes the
     specified type. The default behavior is to determine the
@@ -1082,7 +1122,12 @@ header when requesting a document from a URL:
     headings to become `\part{..}`, while second-level headings
     remain as their default type.
 
-`-N`, `--number-sections`
+    In Docx output, this option adds section breaks before first-level
+    headings if `chapter` is selected, and before first- and second-level
+    headings if `part` is selected. Footnote numbers will restart
+    with each section break unless the reference doc modifies this.
+
+`-N`, `--number-sections=[true|false]`
 
 :   Number section headings in LaTeX, ConTeXt, HTML, Docx, ms, or EPUB
     output.  By default, sections are not numbered.  Sections with class
@@ -1091,14 +1136,17 @@ header when requesting a document from a URL:
 
 `--number-offset=`*NUMBER*[`,`*NUMBER*`,`*...*]
 
-:   Offset for section headings in HTML output (ignored in other
-    output formats).  The first number is added to the section number for
-    top-level headings, the second for second-level headings, and so on.
-    So, for example, if you want the first top-level heading in your
-    document to be numbered "6", specify `--number-offset=5`.
-    If your document starts with a level-2 heading which you want to
-    be numbered "1.5", specify `--number-offset=1,4`.
-    Offsets are 0 by default.  Implies `--number-sections`.
+:   Offsets for section heading numbers. The first number is added
+    to the section number for level-1 headings, the second for
+    level-2 headings, and so on. So, for example, if you
+    want the first level-1 heading in your document to be
+    numbered "6" instead of "1", specify `--number-offset=5`.
+    If your document starts with a level-2 heading which you want
+    to be numbered "1.5", specify `--number-offset=1,4`.
+    `--number-offset` only directly affects the number of the
+    first section heading in a document; subsequent numbers
+    increment in the normal way. Implies `--number-sections`.
+    Currently this feature only affects HTML and Docx output.
 
 `--listings[=true|false]`
 
@@ -1417,7 +1465,7 @@ header when requesting a document from a URL:
     - `-t latex` or none: `pdflatex` (other options: `xelatex`, `lualatex`,
         `tectonic`, `latexmk`)
     - `-t context`: `context`
-    - `-t html`:  `wkhtmltopdf` (other options: `prince`, `weasyprint`,
+    - `-t html`:  `weasyprint` (other options: `prince`, `wkhtmltopdf`,
         `pagedjs-cli`;
         see [print-css.rocks](https://print-css.rocks) for a good
         introduction to PDF generation from HTML/CSS)
@@ -1456,6 +1504,11 @@ header when requesting a document from a URL:
     `--lua-filter`): these transformations are applied in the
     order they appear on the command line.  For more
     information, see the section on [Citations].
+
+    Note: if this option is specified, the `citations` extension
+    will be disabled automatically in the writer, to ensure that
+    the citeproc-generated citations will be rendered instead of
+    the format's own citation syntax.
 
 `--bibliography=`*FILE*
 
@@ -1949,6 +2002,10 @@ To include the built-in citeproc filter, use either `citeproc` or
 | ```                              | ```                               |
 +----------------------------------+-----------------------------------+
 | ```                              | ``` yaml                          |
+| --link-images                    | link-images: true                 |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
 | --html-q-tags                    | html-q-tags: true                 |
 | ```                              | ```                               |
 +----------------------------------+-----------------------------------+
@@ -1962,6 +2019,14 @@ To include the built-in citeproc filter, use either `citeproc` or
 +----------------------------------+-----------------------------------+
 | ```                              | ``` yaml                          |
 | --reference-location block       | reference-location: block         |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
+| --figure-caption-position=above  | figure-caption-position: above    |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
+| --table-caption-position=below   | table-caption-position: below     |
 | ```                              | ```                               |
 +----------------------------------+-----------------------------------+
 | ```                              | ``` yaml                          |
@@ -1986,6 +2051,22 @@ To include the built-in citeproc filter, use either `citeproc` or
 +----------------------------------+-----------------------------------+
 | ```                              | ``` yaml                          |
 | --listings                       | listings: true                    |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
+| --list-of-figures                | list-of-figures: true             |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
+| --lof                            | lof: true                         |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
+| --list-of-tables                 | list-of-tables: true              |
+| ```                              | ```                               |
++----------------------------------+-----------------------------------+
+| ```                              | ``` yaml                          |
+| --lot                            | lot: true                         |
 | ```                              | ```                               |
 +----------------------------------+-----------------------------------+
 | ```                              | ``` yaml                          |
@@ -2172,14 +2253,19 @@ the system default templates for a given output format *FORMAT*
 by putting a file `templates/default.*FORMAT*` in the user data
 directory (see `--data-dir`, above). *Exceptions:*
 
-- For `odt` output, customize the `default.opendocument`
-  template.
+- For `odt` output, customize the `default.opendocument` template.
+- For `docx` output, customize the `default.openxml` template.
 - For `pdf` output, customize the `default.latex` template
   (or the `default.context` template, if you use `-t context`,
   or the `default.ms` template, if you use `-t ms`, or the
   `default.html` template, if you use `-t html`).
-- `docx` and `pptx` have no template (however, you can use
-  `--reference-doc` to customize the output).
+- `pptx` has no template.
+
+Note that `docx`, `odt`, and `pptx` output can also be customized
+using `--reference-doc`.  Use a reference doc to adjust the styles
+in your document; use a template to handle variable interpolation and
+customize the presentation of metadata, the position of the table
+of contents, boilerplate text, etc.
 
 Templates contain *variables*, which allow for the inclusion of
 arbitrary information at any point in the file. They may be set at the
@@ -2420,9 +2506,9 @@ in square brackets, immediately after the variable name
 or partial:
 
 ```
-${months[, ]}$
+${months[, ]}
 
-${articles:bibentry()[; ]$
+${articles:bibentry()[; ]}
 ```
 
 The separator in this case is literal and (unlike with `sep`
@@ -2733,7 +2819,7 @@ ODT or pptx.
     which is preferred to be unitless.
 
 `maxwidth`
-:   sets the CSS `max-width` property (default is 32em).
+:   sets the CSS `max-width` property (default is 36em).
 
 `backgroundcolor`
 :   sets the CSS `background-color` property on the `html` element.
@@ -2829,14 +2915,18 @@ These variables change the appearance of PDF slides using [`beamer`].
 `theme`, `colortheme`, `fonttheme`, `innertheme`, `outertheme`
 :   beamer themes
 
-`themeoptions`
-:   options for LaTeX beamer themes (a list).
+`themeoptions`, `colorthemeoptions`, `fontthemeoptions`, `innerthemeoptions`, `outerthemeoptions`
+:   options for LaTeX beamer themes (lists)
 
 `titlegraphic`
-:   image for title slide
+:   image for title slide: can be a list
 
 `titlegraphicoptions`
 :   options for title slide image
+
+`shorttitle`, `shortsubtitle`, `shortauthor`, `shortinstitute`, `shortdate`
+:   some beamer themes use short versions of the title, subtitle, author,
+    institute, date
 
 ### Variables for PowerPoint
 
@@ -2937,11 +3027,27 @@ Pandoc uses these variables when [creating a PDF] with a LaTeX engine.
     or `numbersections` variable)
 
 `beamerarticle`
-:   produce an article from Beamer slides
+:   produce an article from Beamer slides.  Note: if you set
+    this variable, you must specify the beamer writer but use the
+    default *LaTeX* template: for example,
+    `pandoc -Vbeamerarticle -t beamer --template default.latex`.
 
 `handout`
 :   produce a handout version of Beamer slides (with overlays condensed
     into single slides)
+
+`csquotes`
+:   load `csquotes` package and use `\enquote` or `\enquote*` for quoted text.
+
+`csquotesoptions`
+:   options to use for `csquotes` package (repeat for multiple options).
+
+`babeloptions`
+:   options to pass to the babel package (may be repeated for
+    multiple options). This defaults to `provide=*` if the main
+    language isn't a European language written with Latin or
+    Cyrillic script or Vietnamese. Most users will not need to
+    adjust the default setting.
 
 #### Fonts
 
@@ -2974,9 +3080,10 @@ Pandoc uses these variables when [creating a PDF] with a LaTeX engine.
 `mainfont`, `sansfont`, `monofont`, `mathfont`, `CJKmainfont`, `CJKsansfont`, `CJKmonofont`
 :   font families for use with `xelatex` or
     `lualatex`: take the name of any system font, using the
-    [`fontspec`] package.  `CJKmainfont` uses the [`xecjk`] package.
+    [`fontspec`] package.  `CJKmainfont` uses the [`xecjk`] package if `xelatex` is used,
+    or the [`luatexja`] package if `lualatex` is used.
 
-`mainfontoptions`, `sansfontoptions`, `monofontoptions`, `mathfontoptions`, `CJKoptions`
+`mainfontoptions`, `sansfontoptions`, `monofontoptions`, `mathfontoptions`, `CJKoptions`, `luatexjapresetoptions`
 :   options to use with `mainfont`, `sansfont`, `monofont`, `mathfont`,
     `CJKmainfont` in `xelatex` and `lualatex`.  Allow for any
     choices available through [`fontspec`]; repeat for multiple
@@ -3040,7 +3147,8 @@ Pandoc uses these variables when [creating a PDF] with a LaTeX engine.
 #### Front matter
 
 `lof`, `lot`
-:   include list of figures, list of tables
+:   include list of figures, list of tables (can also be set using
+    `--lof/--list-of-figures`, `--lot/--list-of-tables`)
 
 `thanks`
 :   contents of acknowledgments footnote after document title
@@ -3229,6 +3337,9 @@ The `--css` option also affects the output.
 
 ### Variables for Typst
 
+`template`
+:   Typst template to use.
+
 `margin`
 :   A dictionary with the fields defined in the Typst documentation:
     `x`, `y`, `top`, `bottom`, `left`, `right`.
@@ -3244,6 +3355,10 @@ The `--css` option also affects the output.
 
 `section-numbering`
 :    Schema to use for numbering sections, e.g. `1.A.1`.
+
+`page-numbering`
+:    Schema to use for numbering pages, e.g. `1` or `i`, or
+     an empty string to omit page numbering.
 
 `columns`
 :    Number of columns for body text.
@@ -3658,11 +3773,14 @@ output formats
 
 ### Extension: `styles` ### {#ext-styles}
 
-When converting from docx, read all docx styles as divs (for
-paragraph styles) and spans (for character styles) regardless
-of whether pandoc understands the meaning of these styles.
-This can be used with [docx custom styles](#custom-styles).
-Disabled by default.
+When converting from docx, add `custom-styles` attributes
+for all docx styles, regardless of whether pandoc understands
+the meanings of these styles. Because attributes cannot be
+added directly to paragraphs or text in the pandoc AST,
+paragraph styles will cause Divs to be created and character
+styles will cause Spans to be created to hold the attributes.
+(Table styles will be added to the Table elements directly.)
+This extension can be used with [docx custom styles](#custom-styles).
 
 input formats
 :  `docx`
@@ -3680,11 +3798,19 @@ round-tripping) rather than being parsed.  Use this only
 when you are targeting `ipynb` or a Markdown-based
 output format.
 
+### Extension: `citations` (typst) {#typst-citations}
+
+When the `citations` extension is enabled in `typst`
+(as it is by default), `typst` citations will
+be parsed as native pandoc citations, and native
+pandoc citations will be rendered as `typst` citations.
+
 ### Extension: `citations` (org) {#org-citations}
 
 When the `citations` extension is enabled in `org`,
 org-cite and org-ref style citations will be parsed as
-native pandoc citations.
+native pandoc citations, and org-cite citations will
+be used to render native pandoc citations.
 
   [org-cite]: https://orgmode.org/manual/Citations.html
   [org-ref]:  https://github.com/jkitchin/org-ref
@@ -4704,7 +4830,7 @@ If the file begins with a title block
 
 it will be parsed as bibliographic information, not regular text.  (It
 will be used, for example, in the title of standalone LaTeX or HTML
-output.)  The block may contain just a title, a title and an author,
+output.)  The block may contain just a title, a date and an author,
 or all three elements. If you want to include an author but no
 title, or a title and a date but no author, you need a blank line:
 
@@ -5723,7 +5849,7 @@ author-in-text style inside notes when using a note style.
 
 [CSL user documentation]: https://citationstyles.org/authors/
 [CSL]: https://docs.citationstyles.org/en/stable/specification.html
-[CSL markup specs]: https://docs.citationstyles.org/en/1.0/release-notes.html#rich-text-markup-within-fields
+[CSL markup specs]: https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html#html-like-formatting-tags
 [Chicago Manual of Style]: https://chicagomanualofstyle.org
 [Citation Style Language]: https://citationstyles.org
 [Zotero Style Repository]: https://www.zotero.org/styles
@@ -6830,9 +6956,14 @@ Slide 2 has a special image for its background, even though the heading has no c
 
 ## EPUB Metadata
 
-EPUB metadata may be specified using the `--epub-metadata` option, but
-if the source document is Markdown, it is better to use a [YAML metadata
-block][Extension: `yaml_metadata_block`].  Here is an example:
+There are two ways to specify metadata for an EPUB. The first is to use
+the `--epub-metadata` option, which takes as its argument an XML file
+with [Dublin Core elements].
+
+The second way is to use YAML, either in a
+[YAML metadata block][Extension: `yaml_metadata_block`] in a Markdown
+document, or in a separate YAML file specified with `--metadata-file`.
+Here is an example of a YAML metadata block with EPUB metadata:
 
     ---
     title:
@@ -7216,7 +7347,7 @@ use `--print-highlight-style` to generate a JSON `.theme` file which
 can be modified and used as the argument to `--highlight-style`. To
 get a JSON version of the `pygments` style, for example:
 
-    pandoc --print-highlight-style pygments > my.theme
+    pandoc -o my.theme --print-highlight-style pygments
 
 Then edit `my.theme` and use it like this:
 
@@ -7228,6 +7359,9 @@ want to highlight a language that isn't supported, you can use the
 file](https://docs.kde.org/stable5/en/kate/katepart/highlight.html).
 Before writing your own, have a look at KDE's [repository of syntax
 definitions](https://github.com/KDE/syntax-highlighting/tree/master/data/syntax).
+
+If you receive an error that pandoc "Could not read highlighting theme",
+check that the JSON file is encoded with UTF-8 and has no Byte-Order Mark (BOM).
 
 To disable highlighting, use the `--no-highlight` option.
 
@@ -7247,11 +7381,11 @@ However, if you need to apply your own styles to blocks, or match a preexisting
 set of styles, pandoc allows you to define custom styles for blocks and text
 using `div`s and `span`s, respectively.
 
-If you define a `div` or `span` with the attribute `custom-style`,
-pandoc will apply your specified style to the contained elements (with
-the exception of elements whose function depends on a style, like
-headings, code blocks, block quotes, or links). So, for example, using
-the `bracketed_spans` syntax,
+If you define a Div, Span, or Table with the attribute
+`custom-style`, pandoc will apply your specified style to the
+contained elements (with the exception of elements whose function
+depends on a style, like headings, code blocks, block quotes, or
+links). So, for example, using the `bracketed_spans` syntax,
 
     [Get out]{custom-style="Emphatically"}, he said.
 
@@ -7293,9 +7427,10 @@ interpreting the derivation of the input document's styles.
 
 By enabling the [`styles` extension](#ext-styles) in the docx reader
 (`-f docx+styles`), you can produce output that maintains the styles
-of the input document, using the `custom-style` class. Paragraph
-styles are interpreted as divs, while character styles are interpreted
-as spans.
+of the input document, using the `custom-style` class. A `custom-style`
+attribute will be added for each style. Divs will be created to
+hold the paragraph styles, and Spans to hold the character styles.
+Table styles will be applied directly to the Table.
 
 For example, using the `custom-style-reference.docx` file in the test
 directory, we have the following different outputs:
@@ -7450,6 +7585,12 @@ for various PDF standards as well as tagging. E.g.:
 
 See the prince documentation for more info.
 
+## Typst
+
+Typst 0.12 can produce PDF/A-2b:
+
+    pandoc --pdf-engine=typst --pdf-engine-opt=--pdf-standard=a-2b ...
+
 ## Word Processors
 
 Word processors like LibreOffice and MS Word can also be used to
@@ -7461,7 +7602,7 @@ See the documentation for [Word][word-accessible-pdfs] and
 [LibreOffice][lo-pdf-export].
 
 [word-accessible-pdfs]: https://support.microsoft.com/en-us/office/create-accessible-pdfs-064625e0-56ea-4e16-ad71-3aa33bb4b7ed
-[lo-pdf-export]: https://help.libreoffice.org/7.1/en-US/text/shared/01/ref_pdf_export_general.html
+[lo-pdf-export]: https://help.libreoffice.org/latest/en-US/text/shared/01/ref_pdf_export_general.html
 
 
 # Running pandoc as a web server
@@ -7501,11 +7642,11 @@ For full documentation, see the [pandoc-lua] man page.
    writer could in principle do anything on your file system. Please
    audit filters and custom writers very carefully before using them.
 
-2. Several input formats (including HTML, Org, and RST) support `include`
-   directives that allow the contents of a file to be included in the
-   output. An untrusted attacker could use these to view the contents of
-   files on the file system.  (Using the `--sandbox` option can
-   protect against this threat.)
+2. Several input formats (including LaTeX, Org, RST, and Typst)
+   support `include` directives that allow the contents of a file to be
+   included in the output. An untrusted attacker could use these
+   to view the contents of files on the file system. (Using the
+   `--sandbox` option can protect against this threat.)
 
 3. Several output formats (including RTF, FB2, HTML with
    `--self-contained`, EPUB, Docx, and ODT) will embed encoded
@@ -7515,7 +7656,16 @@ For full documentation, see the [pandoc-lua] man page.
    against this threat, but will also prevent including images in
    these formats.)
 
-4. If your application uses pandoc as a Haskell library (rather than
+4. In reading HTML files, pandoc will attempt to include the
+   contents of `iframe` elements by fetching content from the
+   local file or URL specified by `src`. If untrusted HTML is
+   processed on a server, this has the potential to reveal anything
+   readable by the process running the server. Using the `-f html+raw_html`
+   will mitigate this threat by causing the whole `iframe`
+   to be parsed as a raw HTML block. Using `--sandbox will also
+   protect against the threat.
+
+5. If your application uses pandoc as a Haskell library (rather than
    shelling out to the executable), it is possible to use it in a mode
    that fully isolates pandoc from your file system, by running the
    pandoc operations in the `PandocPure` monad. See the document
@@ -7523,7 +7673,7 @@ For full documentation, see the [pandoc-lua] man page.
    for more details. (This corresponds to the use of the `--sandbox`
    option on the command line.)
 
-5. Pandoc's parsers can exhibit pathological performance on some
+6. Pandoc's parsers can exhibit pathological performance on some
    corner cases.  It is wise to put any pandoc operations under
    a timeout, to avoid DOS attacks that exploit these issues.
    If you are using the pandoc executable, you can add the
@@ -7533,7 +7683,7 @@ For full documentation, see the [pandoc-lua] man page.
    to pathological performance than the `markdown` parser, so
    it is a better choice when processing untrusted input.
 
-6. The HTML generated by pandoc is not guaranteed to be safe.
+7. The HTML generated by pandoc is not guaranteed to be safe.
    If `raw_html` is enabled for the Markdown input, users can
    inject arbitrary HTML.  Even if `raw_html` is disabled,
    users can include dangerous content in URLs and attributes.
@@ -7542,7 +7692,7 @@ For full documentation, see the [pandoc-lua] man page.
 
 # Authors
 
-Copyright 2006--2022 John MacFarlane (jgm@berkeley.edu). Released
+Copyright 2006--2024 John MacFarlane (jgm@berkeley.edu). Released
 under the [GPL], version 2 or greater.  This software carries no
 warranty of any kind.  (See COPYRIGHT for full copyright and
 warranty notices.) For a full list of contributors, see the file

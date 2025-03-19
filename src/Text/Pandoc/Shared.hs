@@ -50,12 +50,12 @@ module Text.Pandoc.Shared (
                      linesToPara,
                      figureDiv,
                      makeSections,
+                     makeSectionsWithOffsets,
                      combineAttr,
                      uniqueIdent,
                      inlineListToIdentifier,
                      textToIdentifier,
                      isHeaderBlock,
-                     stripEmptyParagraphs,
                      onlySimpleTableCells,
                      isTightList,
                      taskListItemFromAscii,
@@ -298,7 +298,7 @@ addPandocAttributes
   :: forall b . HasAttributes (Cm () b) => [(T.Text, T.Text)] -> b -> b
 addPandocAttributes [] bs = bs
 addPandocAttributes kvs bs =
-  unCm . addAttributes (("wrapper","1"):kvs) $ (Cm bs :: Cm () b)
+  unCm . addAttributes kvs $ (Cm bs :: Cm () b)
 
 -- | Generate infinite lazy list of markers for an ordered list,
 -- depending on list attributes.
@@ -512,12 +512,20 @@ textToIdentifier exts =
 -- adjusted so that the lowest header level is n.
 -- (There may still be gaps in header level if the author leaves them.)
 makeSections :: Bool -> Maybe Int -> [Block] -> [Block]
-makeSections numbering mbBaseLevel bs =
-  S.evalState (go bs) []
+makeSections = makeSectionsWithOffsets []
+
+-- | Like 'makeSections', but with a parameter for number offsets
+-- (a list of 'Int's, the first of which is added to the level 1
+-- section number, the second to the level 2, and so on).
+makeSectionsWithOffsets :: [Int] -> Bool -> Maybe Int -> [Block] -> [Block]
+makeSectionsWithOffsets numoffsets numbering mbBaseLevel bs =
+  S.evalState (go bs) numoffsets
  where
   getLevel (Header level _ _) = Min level
   getLevel _ = Min 99
-  minLevel = getMin $ query getLevel bs
+  minLevel = if all (== 0) numoffsets
+                then getMin $ query getLevel bs
+                else 1 -- see #5071, for backwards compatibility
   go :: [Block] -> S.State [Int] [Block]
   go (Header level (ident,classes,kvs) title':xs) = do
     lastnum <- S.get
@@ -539,9 +547,14 @@ makeSections numbering mbBaseLevel bs =
                         ("number", T.intercalate "." (map tshow newnum)) : kvs
                   _ -> kvs
     let divattr = (ident, "section":classes, kvs')
-    let attr = ("",classes,kvs')
+    let isHeadingAttr ("epub:type",_) = False
+        isHeadingAttr ("role",v) =
+          v `elem` ["tab", "presentation", "none", "treeitem",
+                    "menuitem", "button", "heading"]
+        isHeadingAttr _ = True
+    let hattr = ("",classes, filter isHeadingAttr kvs')
     return $
-      Div divattr (Header level' attr title' : sectionContents') : rest'
+      Div divattr (Header level' hattr title' : sectionContents') : rest'
   go (Div divattr@(dident,dclasses,_) (Header level hattr title':ys) : xs)
       | all (\case
                Header level' _ _ -> level' > level
@@ -598,14 +611,6 @@ uniqueIdent exts title' usedIdents =
 isHeaderBlock :: Block -> Bool
 isHeaderBlock Header{} = True
 isHeaderBlock _        = False
-
--- | Remove empty paragraphs.
-stripEmptyParagraphs :: Pandoc -> Pandoc
-stripEmptyParagraphs = walk go
-  where go :: [Block] -> [Block]
-        go = filter (not . isEmptyParagraph)
-        isEmptyParagraph (Para []) = True
-        isEmptyParagraph _         = False
 
 -- | Detect if table rows contain only cells consisting of a single
 -- paragraph that has no @LineBreak@.
@@ -679,7 +684,7 @@ addMetaField key val (Meta meta) =
 -- | Set of HTML elements that are represented as Span with a class equal as
 -- the element tag itself.
 htmlSpanLikeElements :: Set.Set T.Text
-htmlSpanLikeElements = Set.fromList ["kbd", "mark", "dfn"]
+htmlSpanLikeElements = Set.fromList ["kbd", "mark", "dfn", "abbr"]
 
 -- | Reformat 'Inlines' as code, putting the stringlike parts in 'Code'
 -- elements while bringing other inline formatting outside.

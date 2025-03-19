@@ -31,6 +31,7 @@
   linkcolor: ["#800000"],
   citecolor: ["#0000FF"],
   toccolor: ["#800000"],
+  pagenumbering: "1",
   doc,
 ) = {
   set document(
@@ -41,12 +42,14 @@
   set page(
     paper: paper,
     margin: margin,
-    numbering: "1",
+    numbering: pagenumbering,
   )
+  
   set par(
     justify: true,
     leading: linestretch * 0.65em
   )
+
   set text(lang: lang,
            region: region,
            font: font,
@@ -79,7 +82,7 @@
     ]]
   }
 
-  if authors != none and authors != [] {
+  #if authors != none and authors != [] {
     let count = authors.len()
     let ncols = calc.min(count, 3)
     grid(
@@ -95,21 +98,18 @@
     )
   }
 
-  if date != none {
+  #if date != none {
     align(center)[#block(inset: 1em)[
       #date
     ]]
   }
 
-  if abstract != none {
+  #if abstract != none {
     block(inset: 2em)[
     #text(weight: "semibold")[Abstract] #h(1em) #abstract
     ]
   }
+  ]
 
-  if cols == 1 {
-    doc
-  } else {
-    columns(cols, doc)
-  }
+  doc
 }

@@ -41,7 +41,7 @@ import Text.Pandoc.Highlighting
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.DocLayout
+import Text.DocLayout hiding (Color)
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Writers.Math
@@ -92,7 +92,7 @@ pandocToMs opts (Pandoc meta blocks) = do
 
 escapeStr :: WriterOptions -> Text -> Text
 escapeStr opts =
-  escapeString (if writerPreferAscii opts then AsciiOnly else AllowUTF8)
+  escapeString False (if writerPreferAscii opts then AsciiOnly else AllowUTF8)
 
 -- In PDFs we need to escape parentheses and backslash.
 -- In PDF we need to encode as UTF-16 BE.

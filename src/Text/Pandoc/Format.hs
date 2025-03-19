@@ -38,6 +38,7 @@ import Text.Pandoc.Extensions
   , showExtension
   , readExtension
   )
+import Network.URI (URI (..), parseURI)
 import Text.Pandoc.Parsing
 import qualified Data.Text as T
 
@@ -170,7 +171,7 @@ formatFromFilePaths = asum . map formatFromFilePath
 -- | Determines format based on file extension.
 formatFromFilePath :: FilePath -> Maybe FlavoredFormat
 formatFromFilePath x =
-  case takeExtension (map toLower x) of
+  case takeExtension (map toLower fpath) of
     ".Rmd"      -> defFlavor "markdown"
     ".adoc"     -> defFlavor "asciidoc"
     ".asciidoc" -> defFlavor "asciidoc"
@@ -207,6 +208,9 @@ formatFromFilePath x =
     ".opml"     -> defFlavor "opml"
     ".org"      -> defFlavor "org"
     ".pdf"      -> defFlavor "pdf"  -- so we get an "unknown reader" error
+    ".pl"       -> defFlavor "pod"
+    ".pm"       -> defFlavor "pod"
+    ".pod"      -> defFlavor "pod"
     ".pptx"     -> defFlavor "pptx"
     ".ris"      -> defFlavor "ris"
     ".roff"     -> defFlavor "ms"
@@ -221,7 +225,6 @@ formatFromFilePath x =
     ".text"     -> defFlavor "markdown"
     ".textile"  -> defFlavor "textile"
     ".tsv"      -> defFlavor "tsv"
-    ".typ"      -> defFlavor "typst"
     ".txt"      -> defFlavor "markdown"
     ".typ"      -> defFlavor "typst"
     ".wiki"     -> defFlavor "mediawiki"
@@ -233,3 +236,8 @@ formatFromFilePath x =
   withExtension Nothing _ = Nothing
   withExtension (Just (FlavoredFormat f ed)) ext = Just $
     FlavoredFormat f (ed <> ExtensionsDiff (extensionsFromList [ext]) mempty)
+  fpath = case parseURI x of
+            Nothing -> x
+            Just URI{ uriPath = "" } -> "index.html"
+            Just URI{ uriPath = "/" } -> "index.html"
+            Just URI{ uriPath = up } -> up

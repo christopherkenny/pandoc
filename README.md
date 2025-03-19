@@ -81,12 +81,16 @@ It can convert *from*
 - `mediawiki` ([MediaWiki
   markup](https://www.mediawiki.org/wiki/Help:Formatting))
 - `man` ([roff man](https://man.cx/groff_man(7)))
+- `mdoc` ([mdoc](https://mandoc.bsd.lv/man/mdoc.7.html) manual page
+  markup)
 - `muse` ([Muse](https://amusewiki.org/library/manual))
 - `native` (native Haskell)
-- `odt` ([OpenOffice text
+- `odt` ([OpenDocument text
   document](https://en.wikipedia.org/wiki/OpenDocument))
 - `opml` ([OPML](http://dev.opml.org/spec2.html))
 - `org` ([Emacs Org mode](https://orgmode.org))
+- `pod` (Perl’s [Plain Old
+  Documentation](https://perldoc.perl.org/perlpod))
 - `ris` ([RIS](https://en.wikipedia.org/wiki/RIS_(file_format))
   bibliography)
 - `rtf` ([Rich Text
@@ -111,10 +115,12 @@ It can convert *to*
 
 <div id="output-formats">
 
-- `asciidoc` (modern [AsciiDoc](https://www.methods.co.nz/asciidoc/) as
-  interpreted by [AsciiDoctor](https://asciidoctor.org/))
-- `asciidoc_legacy` ([AsciiDoc](https://www.methods.co.nz/asciidoc/) as
-  interpreted by
+- `ansi` (text with [ANSI escape
+  codes](https://en.wikipedia.org/wiki/ANSI_escape_code), for terminal
+  viewing)
+- `asciidoc` (modern [AsciiDoc](https://asciidoc.org/) as interpreted by
+  [AsciiDoctor](https://asciidoctor.org/))
+- `asciidoc_legacy` ([AsciiDoc](https://asciidoc.org/) as interpreted by
   [`asciidoc-py`](https://github.com/asciidoc-py/asciidoc-py)).
 - `asciidoctor` (deprecated synonym for `asciidoc`)
 - `beamer` ([LaTeX beamer](https://ctan.org/pkg/beamer) slide show)
@@ -181,10 +187,11 @@ It can convert *to*
 - `ms` ([roff ms](https://man.cx/groff_ms(7)))
 - `muse` ([Muse](https://amusewiki.org/library/manual))
 - `native` (native Haskell)
-- `odt` ([OpenOffice text
+- `odt` ([OpenDocument text
   document](https://en.wikipedia.org/wiki/OpenDocument))
 - `opml` ([OPML](http://dev.opml.org/spec2.html))
-- `opendocument` ([OpenDocument](http://opendocument.xml.org))
+- `opendocument` ([OpenDocument
+  XML](https://www.oasis-open.org/2021/06/16/opendocument-v1-3-oasis-standard-published/))
 - `org` ([Emacs Org mode](https://orgmode.org))
 - `pdf` ([PDF](https://www.adobe.com/pdf/))
 - `plain` (plain text)

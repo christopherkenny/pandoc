@@ -85,7 +85,7 @@ readHtml opts inp = do
         meta <- stateMeta . parserState <$> getState
         bs' <- replaceNotes (B.toList blocks)
         reportLogMessages
-        return $ Pandoc meta bs'
+        return $ Pandoc meta $ extractMain bs'
       getError (errorMessages -> ms) = case ms of
                                          []    -> ""
                                          (m:_) -> messageString m
@@ -97,6 +97,20 @@ readHtml opts inp = do
   case result of
     Right doc -> return doc
     Left  err -> throwError $ PandocParseError $ T.pack $ getError err
+
+-- Extract contents of main element if exactly one is present; otherwise
+-- return all blocks.
+extractMain :: [Block] -> [Block]
+extractMain bs =
+  case query getMain bs of
+    [] -> bs
+    [Div ("",[],_) bs'] -> bs'
+    bs' -> bs'
+ where
+   getMain :: Block -> [Block]
+   getMain b@(Div (_,_,kvs) _)
+     | Just "main" <- lookup "role" kvs = [b]
+   getMain _ = []
 
 -- Strip namespace prefixes on tags (not attributes)
 stripPrefixes :: [Tag Text] -> [Tag Text]
@@ -178,6 +192,7 @@ block = ((do
     TagOpen name attr ->
       let type' = fromMaybe "" $
                      lookup "type" attr <|> lookup "epub:type" attr
+          role = fromMaybe "" $ lookup "role" attr
           epubExts = extensionEnabled Ext_epub_html_exts exts
       in
       case name of
@@ -197,6 +212,8 @@ block = ((do
         _ | "titlepage" `T.isInfixOf` type'
           , name `elem` ("section" : groupingContent)
           -> mempty <$ eTitlePage
+        _ | role == "doc-endnotes"
+          -> eFootnotes
         "p" -> pPara
         "h1" -> pHeader
         "h2" -> pHeader
@@ -225,7 +242,7 @@ block = ((do
         "main" -> pDiv
         "figure" -> pFigure
         "iframe" -> pIframe
-        "style" -> pRawHtmlBlock
+        "style" -> mempty <$ pHtmlBlock "style" -- see #10643
         "textarea" -> pRawHtmlBlock
         "switch"
           | epubExts
@@ -267,14 +284,14 @@ eCase = do
 
 eFootnote :: PandocMonad m => TagParser m ()
 eFootnote = do
-  guardEnabled Ext_epub_html_exts
+  inNotes <- inFootnotes <$> getState
   TagOpen tag attr' <- lookAhead $ pSatisfy
     (\case
        TagOpen _ attr'
          -> case lookup "type" attr' <|> lookup "epub:type" attr' of
               Just "footnote" -> True
               Just "rearnote" -> True
-              _ -> False
+              _ -> inNotes
        _ -> False)
   let attr = toStringAttr attr'
   let ident = fromMaybe "" (lookup "id" attr)
@@ -285,11 +302,12 @@ eFootnote = do
 eFootnotes :: PandocMonad m => TagParser m Blocks
 eFootnotes = try $ do
   let notes = ["footnotes", "rearnotes"]
-  guardEnabled Ext_epub_html_exts
   (TagOpen tag attr') <- lookAhead pAny
   let attr = toStringAttr attr'
-  guard $ maybe False (`elem` notes)
-          (lookup "type" attr <|> lookup "epub:type" attr)
+  guard (lookup "role" attr == Just "doc-endnotes") <|>
+    (guardEnabled Ext_epub_html_exts >>
+     guard (maybe False (`elem` notes)
+             (lookup "type" attr <|> lookup "epub:type" attr)))
   updateState $ \s -> s{ inFootnotes = True }
   result <- pInTags tag block
   updateState $ \s -> s{ inFootnotes = False }
@@ -302,12 +320,12 @@ eFootnotes = try $ do
 
 eNoteref :: PandocMonad m => TagParser m Inlines
 eNoteref = try $ do
-  guardEnabled Ext_epub_html_exts
   TagOpen tag attr <-
     pSatisfy (\case
                  TagOpen _ as
                     -> (lookup "type" as <|> lookup "epub:type" as)
-                        == Just "noteref"
+                        == Just "noteref" ||
+                        lookup "role" as == Just "doc-noteref"
                  _  -> False)
   ident <- case lookup "href" attr >>= T.uncons of
              Just ('#', rest) -> return rest
@@ -512,14 +530,14 @@ pIframe = try $ do
                | "image/" `T.isPrefixOf` mt -> do
                     return $ B.divWith ("",["iframe"],[]) $
                       B.plain $ B.image url "" mempty
-             _ -> return $ B.divWith ("",["iframe"],[("src", url)]) $ mempty)
+             _ -> return $ B.divWith ("",["iframe"],[("src", url)]) mempty)
        (\e -> do
          logMessage $ CouldNotFetchResource url (renderError e)
          ignore $ renderTags' [tag, TagClose "iframe"])
 
 pRawHtmlBlock :: PandocMonad m => TagParser m Blocks
 pRawHtmlBlock = do
-  raw <- pHtmlBlock "script" <|> pHtmlBlock "style" <|> pHtmlBlock "textarea"
+  raw <- pHtmlBlock "script" <|> pHtmlBlock "textarea"
           <|> pRawTag
   exts <- getOption readerExtensions
   if extensionEnabled Ext_raw_html exts && not (T.null raw)
@@ -667,6 +685,9 @@ inline = pTagText <|> do
           , Just "noteref" <- lookup "type" attr <|> lookup "epub:type" attr
           , Just ('#',_) <- lookup "href" attr >>= T.uncons
             -> eNoteref
+          | Just "doc-noteref" <- lookup "role" attr
+          , Just ('#',_) <- lookup "href" attr >>= T.uncons
+            -> eNoteref
             | otherwise -> pLink
         "switch" -> eSwitch id inline
         "q" -> pQ
@@ -695,6 +716,7 @@ inline = pTagText <|> do
         "input"
           | lookup "type" attr == Just "checkbox"
           -> asks inListItem >>= guard >> pCheckbox
+        "style" -> mempty <$ pHtmlBlock "style" -- see #10643
         "script"
           | Just x <- lookup "type" attr
           , "math/tex" `T.isPrefixOf` x -> pScriptMath
@@ -816,7 +838,10 @@ pSvg = do
   let rawText = T.strip $ renderTags' (opent : contents ++ [closet])
   let svgData = "data:image/svg+xml;base64," <>
                    UTF8.toText (encode $ UTF8.fromText rawText)
-  return $ B.imageWith (ident,cls,[]) svgData mempty mempty
+  let kvs = [("width", "1em") | "fa-w-14" `elem` cls ||
+                                "fa-w-16" `elem` cls ||
+                                "fa-fw" `elem` cls] -- #10134
+  return $ B.imageWith (ident,cls,kvs) svgData mempty mempty
 
 pCodeWithClass :: PandocMonad m => Text -> Text -> TagParser m Inlines
 pCodeWithClass name class' = try $ do
@@ -852,23 +877,30 @@ pSpan :: PandocMonad m => TagParser m Inlines
 pSpan = do
   (TagOpen _ attr') <- lookAhead (pSatisfy $ tagOpen (=="span") (const True))
   exts <- getOption readerExtensions
-  if extensionEnabled Ext_native_spans exts
-     then do
-       contents <- pInTags "span" inline
-       let attr = toAttr attr'
-       let classes = maybe [] T.words $ lookup "class" attr'
-       let styleAttr   = fromMaybe "" $ lookup "style" attr'
-       let fontVariant = fromMaybe "" $
-                          pickStyleAttrProps ["font-variant"] styleAttr
-       let isSmallCaps = fontVariant == "small-caps" ||
-                           "smallcaps" `elem` classes
-       let tag = if isSmallCaps then B.smallcaps else B.spanWith attr
-       return $ tag contents
-     else if extensionEnabled Ext_raw_html exts
-             then do
-               tag <- pSatisfy $ tagOpen (=="span") (const True)
-               return $ B.rawInline "html" $ renderTags' [tag]
-             else pInTags "span" inline -- just contents
+  let attr = toAttr attr'
+  case attr of
+     (_,cls,_) -- skip MathJaX-generated HTML; see #10673
+       | "mjx-chtml" `elem` cls -> mempty <$ pInTags "span" inline
+       | "MathJax_CHTML" `elem` cls -> mempty <$ pInTags "span" inline
+       | "MathJax_Preview" `elem` cls -> mempty <$ pInTags "span" inline
+       | "MJX_Assistive_MathML" `elem` cls -> pInTags "span" inline
+     (_,["katex-html"],_) -> mempty <$ pInTags "span" inline
+       -- skip HTML generated by KaTeX, since we get
+       -- the math by parsing mathml (#9971)
+     _ | extensionEnabled Ext_native_spans exts -> do
+           contents <- pInTags "span" inline
+           let classes = maybe [] T.words $ lookup "class" attr'
+           let styleAttr   = fromMaybe "" $ lookup "style" attr'
+           let fontVariant = fromMaybe "" $
+                              pickStyleAttrProps ["font-variant"] styleAttr
+           let isSmallCaps = fontVariant == "small-caps" ||
+                               "smallcaps" `elem` classes
+           let tag = if isSmallCaps then B.smallcaps else B.spanWith attr
+           return $ tag contents
+       | extensionEnabled Ext_raw_html exts -> do
+            tag <- pSatisfy $ tagOpen (=="span") (const True)
+            return $ B.rawInline "html" $ renderTags' [tag]
+       | otherwise  -> pInTags "span" inline -- just contents
 
 pRawHtmlInline :: PandocMonad m => TagParser m Inlines
 pRawHtmlInline = do
@@ -904,15 +936,29 @@ pMath inCase = try $ do
   let attr = toStringAttr attr'
   unless inCase $
     guard (maybe True (== mathMLNamespace) (lookup "xmlns" attr))
+  let constructor = case lookup "display" attr of
+                       Just "block" -> B.displayMath
+                       _ -> B.math
   contents <- manyTill pAny (pSatisfy (matchTagClose "math"))
-  case mathMLToTeXMath (renderTags $
-          [open] <> contents <> [TagClose "math"]) of
-       Left _   -> return $ B.spanWith ("",["math"],attr) $ B.text $
-                             innerText contents
-       Right "" -> return mempty
-       Right x  -> return $ case lookup "display" attr of
-                                 Just "block" -> B.displayMath x
-                                 _            -> B.math x
+  -- KaTeX and others include original TeX in annotation tag;
+  -- just use this if present rather than parsing MathML:
+  case extractTeXAnnotation contents of
+    Just x -> return $ constructor x
+    Nothing ->
+      case mathMLToTeXMath (renderTags $
+              [open] <> contents <> [TagClose "math"]) of
+           Left _   -> return $ B.spanWith ("",["math"],attr) $ B.text $
+                                 innerText contents
+           Right "" -> return mempty
+           Right x  -> return $ constructor x
+
+extractTeXAnnotation :: [Tag Text] -> Maybe Text
+extractTeXAnnotation [] = Nothing
+extractTeXAnnotation (TagOpen "annotation" [("encoding","application/x-tex")]
+                       : ts) =
+  Just $ innerText $ takeWhile (~/= TagClose ("annotation" :: Text)) ts
+extractTeXAnnotation (_:ts) = extractTeXAnnotation ts
+
 
 pInlinesInTags :: PandocMonad m => Text -> (Inlines -> Inlines)
                -> TagParser m Inlines
@@ -1035,6 +1081,8 @@ isInlineTag :: Tag Text -> Bool
 isInlineTag t = isCommentTag t || case t of
   TagOpen "script" _ -> "math/tex" `T.isPrefixOf` fromAttrib "type" t
   TagClose "script"  -> True
+  TagOpen "style" _  -> True -- see #10643, invalid but it happens
+  TagClose "style"   -> True
   TagOpen name _     -> isInlineTagName name
   TagClose name      -> isInlineTagName name
   _                  -> False
@@ -1185,8 +1233,10 @@ htmlTag f = try $ do
 
 -- | Adjusts a url according to the document's base URL.
 canonicalizeUrl :: PandocMonad m => Text -> TagParser m Text
-canonicalizeUrl url = do
-  mbBaseHref <- baseHref <$> getState
-  return $ case (parseURIReference (T.unpack url), mbBaseHref) of
-                (Just rel, Just bs) -> tshow (rel `nonStrictRelativeTo` bs)
-                _                   -> url
+canonicalizeUrl url
+  | "data:" `T.isPrefixOf` url = return url
+  | otherwise = do
+     mbBaseHref <- baseHref <$> getState
+     return $ case (parseURIReference (T.unpack url), mbBaseHref) of
+                   (Just rel, Just bs) -> tshow (rel `nonStrictRelativeTo` bs)
+                   _                   -> url

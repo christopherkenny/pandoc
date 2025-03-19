@@ -19,6 +19,7 @@ module Text.Pandoc.Lua.Module.Utils
 
 import Control.Applicative ((<|>))
 import Control.Monad ((<$!>))
+import Crypto.Hash (hashWith, SHA1(SHA1))
 import Data.Data (showConstr, toConstr)
 import Data.Default (def)
 import Data.Maybe (fromMaybe)
@@ -34,8 +35,6 @@ import Text.Pandoc.Lua.Marshal.AST
 import Text.Pandoc.Lua.Marshal.Reference
 import Text.Pandoc.Lua.PandocLua (PandocLua (unPandocLua))
 
-import qualified Data.Digest.Pure.SHA as SHA
-import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Text.Pandoc.Builder as B
@@ -54,16 +53,16 @@ documentedModule = Module
   , moduleFields = []
   , moduleOperations = []
   , moduleTypeInitializers = []
-  , moduleFunctions = -- FIXME: order alphabetically
+  , moduleFunctions =
     [ blocks_to_inlines `since` v[2,2,3]
     , citeproc          `since` v[2,19,1]
     , equals            `since` v[2,5]
     , from_simple_table `since` v[2,11]
     , make_sections     `since` v[2,8]
-    , references        `since` v[2,17]
-    , run_lua_filter    `since` v[3,2,1]
-    , run_json_filter   `since` v[2,1,1]
     , normalize_date    `since` v[2,0,6]
+    , references        `since` v[2,17]
+    , run_json_filter   `since` v[2,1,1]
+    , run_lua_filter    `since` v[3,2,1]
     , sha1              `since` v[2,0,6]
     , stringify         `since` v[2,0,6]
     , to_roman_numeral  `since` v[2,0,6]
@@ -301,8 +300,8 @@ run_json_filter = defun "run_json_filter"
 -- | Documented Lua function to compute the hash of a string.
 sha1 :: DocumentedFunction e
 sha1 = defun "sha1"
-  ### liftPure (SHA.showDigest . SHA.sha1)
-  <#> parameter (fmap BSL.fromStrict . peekByteString) "string" "input" ""
+  ### liftPure (show . hashWith SHA1)
+  <#> parameter peekByteString "string" "input" ""
   =#> functionResult pushString "string" "hexadecimal hash value"
   #? "Computes the SHA1 hash of the given string input."
 
@@ -317,7 +316,11 @@ stringify = defun "stringify"
          [ (fmap Shared.stringify . peekPandoc)
          , (fmap Shared.stringify . peekInline)
          , (fmap Shared.stringify . peekBlock)
+         , (fmap Shared.stringify . peekCaption)
+         , (fmap Shared.stringify . peekCell)
          , (fmap Shared.stringify . peekCitation)
+         , (fmap Shared.stringify . peekTableHead)
+         , (fmap Shared.stringify . peekTableFoot)
          , (fmap stringifyMetaValue . peekMetaValue)
          , (fmap (const "") . peekAttr)
          , (fmap (const "") . peekListAttributes)

@@ -94,7 +94,8 @@ writeDocx :: (PandocMonad m)
 writeDocx opts doc = do
   let Pandoc meta blocks = walk fixDisplayMath doc
   setupTranslations meta
-  let blocks' = makeSections True Nothing blocks
+  let blocks' = makeSectionsWithOffsets (writerNumberOffset opts)
+                   True Nothing blocks
   let doc' = Pandoc meta blocks'
 
   username <- P.lookupEnv "USERNAME"
@@ -238,20 +239,17 @@ writeDocx opts doc = do
                                  (\q -> qName q == "id" && qPrefix q == Just "r")
                                  idMap
                                  (elChildren sectpr')
-                        in Just . ppElement $
-                             add_attrs (elAttribs sectpr') $ mknode "w:sectPr" [] cs
-        Nothing      -> Nothing
-
+                        in add_attrs (elAttribs sectpr') $ mknode "w:sectPr" [] cs
+        Nothing      -> mknode "w:sectPr" []
+                          [ mknode "w:footnotePr" []
+                            [ mknode "w:numRestart" [("w:val","eachSect")] () ]
+                          ]
 
   ((contents, footnotes, comments), st) <- runStateT
                          (runReaderT
-                          (writeOpenXML opts{ writerWrapText = WrapNone
-                                            , writerVariables =
-                                                (maybe id (setField "sectpr") sectpr)
-                                                (writerVariables opts)
-                                                }
+                          (writeOpenXML opts{ writerWrapText = WrapNone }
                                         doc')
-                          env)
+                          env{ envSectPr = Just sectpr })
                          initialSt
   let epochtime = floor $ utcTimeToPOSIXSeconds utctime
   let imgs = M.elems $ stImages st
@@ -345,7 +343,6 @@ writeDocx opts doc = do
   let relEntry = toEntry "word/_rels/document.xml.rels" epochtime
         $ renderXml reldoc
 
-  -- let sectpr = fromMaybe (mknode "w:sectPr" [] ()) mbsectpr'
   let contents' = BL.fromStrict $ UTF8.fromText contents
 
   -- word/document.xml

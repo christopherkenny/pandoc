@@ -40,11 +40,9 @@ to small caps:
 
 ``` lua
 return {
-  {
-    Strong = function (elem)
-      return pandoc.SmallCaps(elem.content)
-    end,
-  }
+  Strong = function (elem)
+    return pandoc.SmallCaps(elem.content)
+  end,
 }
 ```
 
@@ -187,7 +185,7 @@ local filter = {
   traverse = 'topdown',
   -- ... filter functions ...
 }
-return {filter}
+return filter
 ```
 
 Support for this was added in pandoc 2.17; previous versions
@@ -400,6 +398,11 @@ colon syntax (`mystring:uc_upper()`).
 
 # Debugging Lua filters
 
+Many errors can be avoided by performing static analysis.
+[`luacheck`](https://github.com/lunarmodules/luacheck) may be used
+for this purpose. A Luacheck configuration file for pandoc filters
+is available at <https://github.com/rnwst/pandoc-luacheckrc>.
+
 William Lupton has written a Lua module with some handy
 functions for debugging Lua filters, including functions
 that can pretty-print the Pandoc AST elements manipulated
@@ -424,7 +427,7 @@ its dependency
 install by adding `path.lua = "/path/to/your/lua"` in your ZeroBrane
 settings file. Next, open your Lua filter in ZeroBrane, and add
 `require('mobdebug').start()` at the line where you want your
-breakpoint. Then make sure the Project > Lua Intepreter is set to the
+breakpoint. Then make sure the Project > Lua Interpreter is set to the
 "Lua" you added in settings and enable "Start Debugger Server" [see
 detailed instructions
 here](https://studio.zerobrane.com/doc-remote-debugging). Run Pandoc
@@ -1029,7 +1032,7 @@ Usage:
 A block quote element.
 
 Values of this type can be created with the
-[`pandoc.BlockQuote`](#pandoc.blockquote) constructor.
+[`pandoc.BlockQuote`](#pandoc.BlockQuote) constructor.
 
 Fields:
 
@@ -1044,7 +1047,7 @@ Fields:
 A bullet list.
 
 Values of this type can be created with the
-[`pandoc.BulletList`](#pandoc.bulletlist) constructor.
+[`pandoc.BulletList`](#pandoc.BulletList) constructor.
 
 Fields:
 
@@ -1059,7 +1062,7 @@ Fields:
 Block of code.
 
 Values of this type can be created with the
-[`pandoc.CodeBlock`](#pandoc.codeblock) constructor.
+[`pandoc.CodeBlock`](#pandoc.CodeBlock) constructor.
 
 Fields:
 
@@ -1086,7 +1089,7 @@ Fields:
 Definition list, containing terms and their explanation.
 
 Values of this type can be created with the
-[`pandoc.DefinitionList`](#pandoc.definitionlist) constructor.
+[`pandoc.DefinitionList`](#pandoc.DefinitionList) constructor.
 
 Fields:
 
@@ -1101,7 +1104,7 @@ Fields:
 Generic block container with attributes.
 
 Values of this type can be created with the
-[`pandoc.Div`](#pandoc.div) constructor.
+[`pandoc.Div`](#pandoc.Div) constructor.
 
 Fields:
 
@@ -1129,7 +1132,7 @@ Fields:
 Figure with caption and arbitrary block contents.
 
 Values of this type can be created with the
-[`pandoc.Figure`](#pandoc.figure) constructor.
+[`pandoc.Figure`](#pandoc.Figure) constructor.
 
 Fields:
 
@@ -1159,7 +1162,7 @@ Fields:
 Creates a header element.
 
 Values of this type can be created with the
-[`pandoc.Header`](#pandoc.header) constructor.
+[`pandoc.Header`](#pandoc.Header) constructor.
 
 Fields:
 
@@ -1190,7 +1193,7 @@ Fields:
 A horizontal rule.
 
 Values of this type can be created with the
-[`pandoc.HorizontalRule`](#pandoc.horizontalrule) constructor.
+[`pandoc.HorizontalRule`](#pandoc.HorizontalRule) constructor.
 
 Fields:
 
@@ -1203,7 +1206,7 @@ A line block, i.e. a list of lines, each separated from the next
 by a newline.
 
 Values of this type can be created with the
-[`pandoc.LineBlock`](#pandoc.lineblock) constructor.
+[`pandoc.LineBlock`](#pandoc.LineBlock) constructor.
 
 Fields:
 
@@ -1218,7 +1221,7 @@ Fields:
 An ordered list.
 
 Values of this type can be created with the
-[`pandoc.OrderedList`](#pandoc.orderedlist) constructor.
+[`pandoc.OrderedList`](#pandoc.OrderedList) constructor.
 
 Fields:
 
@@ -1245,7 +1248,7 @@ Fields:
 A paragraph.
 
 Values of this type can be created with the
-[`pandoc.Para`](#pandoc.para) constructor.
+[`pandoc.Para`](#pandoc.Para) constructor.
 
 Fields:
 
@@ -1260,7 +1263,7 @@ Fields:
 Plain text, not a paragraph.
 
 Values of this type can be created with the
-[`pandoc.Plain`](#pandoc.plain) constructor.
+[`pandoc.Plain`](#pandoc.Plain) constructor.
 
 Fields:
 
@@ -1275,7 +1278,7 @@ Fields:
 Raw content of a specified format.
 
 Values of this type can be created with the
-[`pandoc.RawBlock`](#pandoc.rawblock) constructor.
+[`pandoc.RawBlock`](#pandoc.RawBlock) constructor.
 
 Fields:
 
@@ -1293,7 +1296,7 @@ Fields:
 A table.
 
 Values of this type can be created with the
-[`pandoc.Table`](#pandoc.table) constructor.
+[`pandoc.Table`](#pandoc.Table) constructor.
 
 Fields:
 
@@ -1435,7 +1438,7 @@ Usage:
 Citation.
 
 Values of this type can be created with the
-[`pandoc.Cite`](#pandoc.cite) constructor.
+[`pandoc.Cite`](#pandoc.Cite) constructor.
 
 Fields:
 
@@ -1453,7 +1456,7 @@ Fields:
 Inline code
 
 Values of this type can be created with the
-[`pandoc.Code`](#pandoc.code) constructor.
+[`pandoc.Code`](#pandoc.Code) constructor.
 
 Fields:
 
@@ -1480,7 +1483,7 @@ Fields:
 Emphasized text
 
 Values of this type can be created with the
-[`pandoc.Emph`](#pandoc.emph) constructor.
+[`pandoc.Emph`](#pandoc.Emph) constructor.
 
 Fields:
 
@@ -1495,7 +1498,7 @@ Fields:
 Image: alt text (list of inlines), target
 
 Values of this type can be created with the
-[`pandoc.Image`](#pandoc.image) constructor.
+[`pandoc.Image`](#pandoc.Image) constructor.
 
 Fields:
 
@@ -1528,7 +1531,7 @@ Fields:
 Hard line break
 
 Values of this type can be created with the
-[`pandoc.LineBreak`](#pandoc.linebreak) constructor.
+[`pandoc.LineBreak`](#pandoc.LineBreak) constructor.
 
 Fields:
 
@@ -1540,7 +1543,7 @@ Fields:
 Hyperlink: alt text (list of inlines), target
 
 Values of this type can be created with the
-[`pandoc.Link`](#pandoc.link) constructor.
+[`pandoc.Link`](#pandoc.Link) constructor.
 
 Fields:
 
@@ -1573,7 +1576,7 @@ Fields:
 TeX math (literal)
 
 Values of this type can be created with the
-[`pandoc.Math`](#pandoc.math) constructor.
+[`pandoc.Math`](#pandoc.Math) constructor.
 
 Fields:
 
@@ -1593,7 +1596,7 @@ Fields:
 Footnote or endnote
 
 Values of this type can be created with the
-[`pandoc.Note`](#pandoc.note) constructor.
+[`pandoc.Note`](#pandoc.Note) constructor.
 
 Fields:
 
@@ -1608,7 +1611,7 @@ Fields:
 Quoted text
 
 Values of this type can be created with the
-[`pandoc.Quoted`](#pandoc.quoted) constructor.
+[`pandoc.Quoted`](#pandoc.Quoted) constructor.
 
 Fields:
 
@@ -1627,7 +1630,7 @@ Fields:
 Raw inline
 
 Values of this type can be created with the
-[`pandoc.RawInline`](#pandoc.rawinline) constructor.
+[`pandoc.RawInline`](#pandoc.RawInline) constructor.
 
 Fields:
 
@@ -1645,7 +1648,7 @@ Fields:
 Small caps text
 
 Values of this type can be created with the
-[`pandoc.SmallCaps`](#pandoc.smallcaps) constructor.
+[`pandoc.SmallCaps`](#pandoc.Smallcaps) constructor.
 
 Fields:
 
@@ -1660,7 +1663,7 @@ Fields:
 Soft line break
 
 Values of this type can be created with the
-[`pandoc.SoftBreak`](#pandoc.softbreak) constructor.
+[`pandoc.SoftBreak`](#pandoc.Softbreak) constructor.
 
 Fields:
 
@@ -1672,7 +1675,7 @@ Fields:
 Inter-word space
 
 Values of this type can be created with the
-[`pandoc.Space`](#pandoc.space) constructor.
+[`pandoc.Space`](#pandoc.Space) constructor.
 
 Fields:
 
@@ -1684,7 +1687,7 @@ Fields:
 Generic inline container with attributes
 
 Values of this type can be created with the
-[`pandoc.Span`](#pandoc.span) constructor.
+[`pandoc.Span`](#pandoc.Span) constructor.
 
 Fields:
 
@@ -1711,7 +1714,7 @@ Fields:
 Text
 
 Values of this type can be created with the
-[`pandoc.Str`](#pandoc.str) constructor.
+[`pandoc.Str`](#pandoc.Str) constructor.
 
 Fields:
 
@@ -1726,7 +1729,7 @@ Fields:
 Strikeout text
 
 Values of this type can be created with the
-[`pandoc.Strikeout`](#pandoc.strikeout) constructor.
+[`pandoc.Strikeout`](#pandoc.Strikeout) constructor.
 
 Fields:
 
@@ -1741,7 +1744,7 @@ Fields:
 Strongly emphasized text
 
 Values of this type can be created with the
-[`pandoc.Strong`](#pandoc.strong) constructor.
+[`pandoc.Strong`](#pandoc.Strong) constructor.
 
 Fields:
 
@@ -1756,7 +1759,7 @@ Fields:
 Subscripted text
 
 Values of this type can be created with the
-[`pandoc.Subscript`](#pandoc.subscript) constructor.
+[`pandoc.Subscript`](#pandoc.Subscript) constructor.
 
 Fields:
 
@@ -1771,7 +1774,7 @@ Fields:
 Superscripted text
 
 Values of this type can be created with the
-[`pandoc.Superscript`](#pandoc.superscript) constructor.
+[`pandoc.Superscript`](#pandoc.Superscript) constructor.
 
 Fields:
 
@@ -1786,7 +1789,7 @@ Fields:
 Underlined text
 
 Values of this type can be created with the
-[`pandoc.Underline`](#pandoc.underline) constructor.
+[`pandoc.Underline`](#pandoc.Underline) constructor.
 
 Fields:
 
@@ -1855,7 +1858,7 @@ Usage:
 ### Attr {#type-attr}
 
 A set of element attributes. Values of this type can be created
-with the [`pandoc.Attr`](#pandoc.attr) constructor. For
+with the [`pandoc.Attr`](#pandoc.Attr) constructor. For
 convenience, it is usually not necessary to construct the value
 directly if it is part of an element, and it is sufficient to
 pass an HTML-like table. E.g., to create a span with identifier
@@ -1981,7 +1984,7 @@ components:
 List attributes
 
 Values of this type can be created with the
-[`pandoc.ListAttributes`](#pandoc.listattributes) constructor.
+[`pandoc.ListAttributes`](#pandoc.ListAttributes) constructor.
 
 Fields:
 
@@ -2154,9 +2157,9 @@ Fields:
     value `nil` means that no highlighting is used. (table|nil)
 
 `html_math_method`
-:   How to print math in HTML; one 'plain', 'gladtex', 'webtex',
-    'mathml', 'mathjax', or a table with keys `method` and
-    `url`. (string|table)
+:   How to print math in HTML; one of 'plain', 'mathjax',
+    'mathml', 'webtex', 'katex', 'gladtex', or a table with keys
+    `method` and `url`. (string|table)
 
 `html_q_tags`
 :   Use `<q>` tags for quotes in HTML (boolean)
@@ -2378,7 +2381,7 @@ Comparisons are performed element-wise, i.e.
     Version '1.12' > Version '1.9'
 
 Values of this type can be created with the
-[`pandoc.types.Version`](#pandoc.types.version) constructor.
+[`pandoc.types.Version`](#pandoc.types.Version) constructor.
 
 ### `must_be_at_least`
 
@@ -3747,6 +3750,10 @@ all enabled extensions, or a table with extensions as keys and
 their activation status as values (`true` or `'enable'` to enable
 an extension, `false` or `'disable'` to disable it).
 
+Note: The extensions field in `reader_options` is ignored, as the
+function will always use the format extensions specified via the
+`format` parameter.
+
 Parameters:
 
 `markup`
@@ -3779,6 +3786,10 @@ Usage:
 ### `write (doc[, format[, writer_options]])` {#pandoc.write}
 
 Converts a document to the given target format.
+
+Note: The extensions field in `writer_options` is ignored, as the
+function will always use the format extensions specified via the
+`format` parameter.
 
 Parameters:
 
@@ -4068,6 +4079,27 @@ Returns:
 
 *Since: 2.8*
 
+### normalize_date {#pandoc.utils.normalize_date}
+
+`normalize_date (date)`
+
+Parse a date and convert (if possible) to "YYYY-MM-DD" format. We
+limit years to the range 1601-9999 (ISO 8601 accepts greater than
+or equal to 1583, but MS Word only accepts dates starting 1601).
+Returns nil instead of a string if the conversion failed.
+
+Parameters:
+
+`date`
+:   the date string (string)
+
+Returns:
+
+-   normalized date, or nil if normalization failed. ([string or
+    nil]{unknown-type="string or nil"})
+
+*Since: 2.0.6*
+
 ### references {#pandoc.utils.references}
 
 `references (doc)`
@@ -4102,31 +4134,6 @@ Returns:
 
 *Since: 2.17*
 
-### run_lua_filter {#pandoc.utils.run_lua_filter}
-
-`run_lua_filter (doc, filter[, env])`
-
-Filter the given doc by passing it through a Lua filter.
-
-The filter will be run in the current Lua process.
-
-Parameters:
-
-`doc`
-:   the Pandoc document to filter ([Pandoc])
-
-`filter`
-:   filepath of the filter to run (string)
-
-`env`
-:   environment to load and run the filter in (table)
-
-Returns:
-
--   filtered document ([Pandoc])
-
-*Since: 3.2.1*
-
 ### run_json_filter {#pandoc.utils.run_json_filter}
 
 `run_json_filter (doc, filter[, args])`
@@ -4151,26 +4158,30 @@ Returns:
 
 *Since: 2.1.1*
 
-### normalize_date {#pandoc.utils.normalize_date}
+### run_lua_filter {#pandoc.utils.run_lua_filter}
 
-`normalize_date (date)`
+`run_lua_filter (doc, filter[, env])`
 
-Parse a date and convert (if possible) to "YYYY-MM-DD" format. We
-limit years to the range 1601-9999 (ISO 8601 accepts greater than
-or equal to 1583, but MS Word only accepts dates starting 1601).
-Returns nil instead of a string if the conversion failed.
+Filter the given doc by passing it through a Lua filter.
+
+The filter will be run in the current Lua process.
 
 Parameters:
 
-`date`
-:   the date string (string)
+`doc`
+:   the Pandoc document to filter ([Pandoc])
+
+`filter`
+:   filepath of the filter to run (string)
+
+`env`
+:   environment to load and run the filter in (table)
 
 Returns:
 
--   normalized date, or nil if normalization failed. ([string or
-    nil]{unknown-type="string or nil"})
+-   filtered document ([Pandoc])
 
-*Since: 2.0.6*
+*Since: 3.2.1*
 
 ### sha1 {#pandoc.utils.sha1}
 
@@ -4578,6 +4589,28 @@ Returns:
 
 ## Methods
 
+### `pandoc.List:at` {#pandoc.list:at}
+
+`:at (index[, default])`
+
+Returns the element at the given index, or `default` if the list
+contains no item at the given position.
+
+Negative integers count back from the last item in the list.
+
+Parameters:
+
+`index`
+:   element position (integer)
+
+`default`
+:   the default value that is returned if the index is out of
+    range (any)
+
+Returns:
+
+-   the list item at `index`, or `default`.
+
 ### `pandoc.List:clone ()` {#pandoc.list:clone}
 
 Returns a (shallow) copy of the list. (To get a deep copy
@@ -4668,6 +4701,28 @@ Parameters:
 `value`
 :   value to insert into the list
 
+### `pandoc.List:iter ([step])` {#pandoc.list:iter}
+
+Create an iterator over the list. The resulting function returns the
+next value each time it is called.
+
+Usage:
+
+    for item in List{1, 1, 2, 3, 5, 8}:iter() do
+      -- process item
+    end
+
+Parameters:
+
+`step`
+:   step width with which to step through the list. Negative step sizes
+    will cause the iterator to start from the end of the list. Defaults
+    to 1. (integer)
+
+Returns:
+
+-   iterator (function)
+
 ### `pandoc.List:map (fn)` {#pandoc.list:map}
 
 Returns a copy of the current list by applying the given
@@ -4682,6 +4737,9 @@ Parameters:
 
 Create a new List. If the optional argument `table` is given,
 set the metatable of that value to `pandoc.List`.
+
+The function also accepts an iterator, in which case it creates a
+new list from the return values of the iterator function.
 
 Parameters:
 
@@ -4840,7 +4898,7 @@ Returns a table containing the size and resolution of an image;
 throws an error if the given string is not an image, or if the
 size of the image cannot be determined.
 
-The resulting table has four entires: *width*, *height*,
+The resulting table has four entries: *width*, *height*,
 *dpi_horz*, and *dpi_vert*.
 
 The `opts` parameter, when given, should be either a WriterOptions
@@ -5395,6 +5453,8 @@ The machine architecture on which the program is running. (string)
 ### os {#pandoc.system.os}
 
 The operating system on which the program is running. (string)
+The most common values are `darwin` (macOS), `freebsd`, `linux`,
+`linux-android`, `mingw32` (Windows), `netbsd`, `openbsd`.
 
 ## Functions {#pandoc.system-functions}
 
@@ -5867,7 +5927,7 @@ Parameters:
 
 Returns:
 
--   doc contatining just the literal string ([Doc])
+-   doc containing just the literal string ([Doc])
 
 *Since: 2.18*
 
@@ -6022,7 +6082,7 @@ Returns:
 
 ### render {#pandoc.layout.render}
 
-`render (doc[, colwidth])`
+`render (doc[, colwidth[, style]])`
 
 Render a [Doc]. The text is reflowed on breakable spaces to match
 the given line length. Text is not reflowed if the line line
@@ -6034,8 +6094,14 @@ Parameters:
 :   document ([Doc])
 
 `colwidth`
-:   planned maximum line length
+:   Maximum number of characters per line. A value of `nil`, the
+    default, means that the text is not reflown.
     ([integer]{unknown-type="integer"})
+
+`style`
+:   Whether to generate plain text or ANSI terminal output. Must
+    be either `'plain'` or `'ansi'`. Defaults to `'plain'`.
+    (string)
 
 Returns:
 
@@ -6153,6 +6219,116 @@ Returns:
 -   column number ([integer]{unknown-type="integer"}\|string)
 
 *Since: 2.18*
+
+### bold {#pandoc.layout.bold}
+
+`bold (doc)`
+
+Puts a [Doc] in boldface.
+
+Parameters:
+
+`doc`
+:   document ([Doc])
+
+Returns:
+
+-   bolded Doc ([Doc])
+
+*Since: 3.4.1*
+
+### italic {#pandoc.layout.italic}
+
+`italic (doc)`
+
+Puts a [Doc] in italics.
+
+Parameters:
+
+`doc`
+:   document ([Doc])
+
+Returns:
+
+-   styled Doc ([Doc])
+
+*Since: 3.4.1*
+
+### underlined {#pandoc.layout.underlined}
+
+`underlined (doc)`
+
+Underlines a [Doc].
+
+Parameters:
+
+`doc`
+:   document ([Doc])
+
+Returns:
+
+-   styled Doc ([Doc])
+
+*Since: 3.4.1*
+
+### strikeout {#pandoc.layout.strikeout}
+
+`strikeout (doc)`
+
+Puts a line through the [Doc].
+
+Parameters:
+
+`doc`
+:   document ([Doc])
+
+Returns:
+
+-   styled Doc ([Doc])
+
+*Since: 3.4.1*
+
+### fg {#pandoc.layout.fg}
+
+`fg (doc, color)`
+
+Set the foreground color.
+
+Parameters:
+
+`doc`
+:   document ([Doc])
+
+`color`
+:   One of 'black', 'red', 'green', 'yellow', 'blue', 'magenta'
+    'cyan', or 'white'. (string)
+
+Returns:
+
+-   styled Doc ([Doc])
+
+*Since: 3.4.1*
+
+### bg {#pandoc.layout.bg}
+
+`bg (doc, color)`
+
+Set the background color.
+
+Parameters:
+
+`doc`
+:   document ([Doc])
+
+`color`
+:   One of 'black', 'red', 'green', 'yellow', 'blue', 'magenta'
+    'cyan', or 'white'. (string)
+
+Returns:
+
+-   styled Doc ([Doc])
+
+*Since: 3.4.1*
 
 ## Types {#pandoc.layout-types}
 

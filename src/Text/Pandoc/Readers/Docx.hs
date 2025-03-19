@@ -201,6 +201,8 @@ bodyPartsToMeta' (bp : bps)
     inlines <- smushInlines <$> mapM parPartToInlines parParts
     remaining <- bodyPartsToMeta' bps
     let
+      -- for titles, we just take the first one and ignore the rest, #10359:
+      f _ x | metaField == "title" || metaField == "subtitle" = x
       f (MetaInlines ils) (MetaInlines ils') = MetaBlocks [Para ils, Para ils']
       f (MetaInlines ils) (MetaBlocks blks) = MetaBlocks (Para ils : blks)
       f m (MetaList mv) = MetaList (m : mv)
@@ -355,9 +357,10 @@ extentToAttr _ = nullAttr
 blocksToInlinesWarn :: PandocMonad m => T.Text -> Blocks -> DocxContext m Inlines
 blocksToInlinesWarn cmtId blks = do
   let paraOrPlain :: Block -> Bool
-      paraOrPlain (Para _)  = True
-      paraOrPlain (Plain _) = True
-      paraOrPlain _         = False
+      paraOrPlain (Para _)       = True
+      paraOrPlain (Plain _)      = True
+      paraOrPlain (Div _ nested) = all paraOrPlain nested
+      paraOrPlain _              = False
   unless (all paraOrPlain blks) $
     lift $ P.report $ DocxParserWarning $
       "Docx comment " <> cmtId <> " will not retain formatting"
@@ -470,6 +473,13 @@ parPartToInlines' (OMathPara exps) =
 parPartToInlines' (Field info children) =
   case info of
     HyperlinkField url -> parPartToInlines' $ ExternalHyperLink url children
+    IndexrefField ie ->
+      pure $ spanWith ("",["indexref"],
+                           (("entry", entryTitle ie) :
+                             maybe [] (\x -> [("crossref",x)]) (entrySee ie)
+                          ++ maybe [] (\x -> [("yomi",x)]) (entryYomi ie)
+                          ++ [("bold","") | entryBold ie]
+                          ++ [("italic","") | entryItalic ie])) mempty
     PagerefField fieldAnchor True -> parPartToInlines' $ InternalHyperLink fieldAnchor children
     EndNoteCite t -> do
       formattedCite <- smushInlines <$> mapM parPartToInlines' children
@@ -510,6 +520,13 @@ parPartToInlines' (Field info children) =
          else smushInlines <$> mapM parPartToInlines' children
     _ -> smushInlines <$> mapM parPartToInlines' children
 
+-- Helper function to convert CitationItemType to CitationMode
+convertCitationMode :: Citeproc.CitationItemType -> CitationMode
+convertCitationMode itemType = case itemType of
+                                 Citeproc.NormalCite -> NormalCitation
+                                 Citeproc.SuppressAuthor -> SuppressAuthor
+                                 Citeproc.AuthorOnly -> AuthorInText
+
 -- Turn a 'Citeproc.Citation' into a list of 'Text.Pandoc.Definition.Citation',
 -- and store the embedded bibliographic data in state.
 handleCitation :: PandocMonad m
@@ -526,20 +543,23 @@ handleCitation citation = do
                          <> x <> " ")
                      (Citeproc.citationItemLocator item)
                     <> fromMaybe mempty (Citeproc.citationItemSuffix item)
-                , citationMode = NormalCitation -- TODO for now
+                , citationMode = convertCitationMode (Citeproc.citationItemType item)
                 , citationNoteNum = 0
                 , citationHash = 0 }
   let items = Citeproc.citationItems citation
   let cs = map toPandocCitation items
-  refs <- mapM (traverse (return . text)) $
-            mapMaybe Citeproc.citationItemData items
+  let refs = mapMaybe (\item -> fmap (\itemData -> text <$>
+                                        -- see #10366, sometimes itemData has a different
+                                        -- id and we need to use the same one:
+                                        itemData{ referenceId =
+                                                    Citeproc.citationItemId item })
+                                  (Citeproc.citationItemData item)) items
   modify $ \st ->
     st{ docxReferences = foldr
           (\ref -> M.insert (referenceId ref) ref)
           (docxReferences st)
           refs }
   return cs
-
 
 isAnchorSpan :: Inline -> Bool
 isAnchorSpan (Span (_, ["anchor"], []) _) = True
@@ -663,6 +683,34 @@ normalizeToClassName = T.map go . fromStyleName
              | otherwise = c
 
 bodyPartToBlocks :: PandocMonad m => BodyPart -> DocxContext m Blocks
+bodyPartToBlocks (Heading n style pPr numId lvl mblvlInfo parparts) = do
+    ils <- local (\s-> s{docxInHeaderBlock=True})
+           (smushInlines <$> mapM parPartToInlines parparts)
+    let classes = map normalizeToClassName . delete style
+                $ getStyleNames (pStyle pPr)
+    hasNumbering <- gets docxNumberedHeadings
+    let addNum = if hasNumbering && not (numbered pPr)
+                 then (++ ["unnumbered"])
+                 else id
+    if T.null numId
+       then pure ()
+       else do
+         -- We check whether this current numId has previously been used,
+         -- since Docx expects us to pick up where we left off.
+         listState <- gets docxListState
+         let start = case M.lookup (numId, lvl) listState of
+                       Nothing -> case mblvlInfo of
+                         Nothing -> 1
+                         Just (Level _ _ _ z) -> fromMaybe 1 z
+                       Just z -> z + 1
+         modify $ \st -> st{ docxListState =
+             -- expire all the continuation data for lists of level > this one:
+             -- a new level 1 list item resets continuation for level 2+
+             -- see #10258
+             let notExpired (_, lvl') _ = lvl' <= lvl
+             in M.insert (numId, lvl) start
+                  (M.filterWithKey notExpired listState) }
+    makeHeaderAnchor $ headerWith ("", addNum classes, []) n ils
 bodyPartToBlocks (Paragraph pPr parparts)
   | Just True <- pBidi pPr = do
       let pPr' = pPr { pBidi = Nothing }
@@ -675,18 +723,6 @@ bodyPartToBlocks (Paragraph pPr parparts)
         codeBlock $
         T.concat $
         map parPartToText parparts
-  | Just (style, n) <- pHeading pPr = do
-    ils <- local (\s-> s{docxInHeaderBlock=True})
-           (smushInlines <$> mapM parPartToInlines parparts)
-    let classes = map normalizeToClassName . delete style
-                $ getStyleNames (pStyle pPr)
-
-    hasNumbering <- gets docxNumberedHeadings
-    let addNum = if hasNumbering && not (numbered pPr)
-                 then (++ ["unnumbered"])
-                 else id
-    makeHeaderAnchor $
-      headerWith ("", addNum classes, []) n ils
   | otherwise = do
     ils <- trimSps . smushInlines <$> mapM parPartToInlines parparts
     prevParaIls <- gets docxPrevPara
@@ -772,9 +808,9 @@ bodyPartToBlocks (Captioned parstyle parparts bpart) = do
     [Para im@[Image{}]]
       -> pure $ singleton $ Figure nullAttr capt [Plain im]
     _ -> pure captContents
-bodyPartToBlocks (Tbl _ _ _ []) =
+bodyPartToBlocks (Tbl _ _ _ _ []) =
   return mempty
-bodyPartToBlocks (Tbl cap grid look parts) = do
+bodyPartToBlocks (Tbl mbsty cap grid look parts) = do
   let fullCaption = if T.null cap then mempty else plain (text cap)
   let shortCaption = if T.null cap then Nothing else Just (toList (text cap))
       cap' = caption shortCaption fullCaption
@@ -796,7 +832,11 @@ bodyPartToBlocks (Tbl cap grid look parts) = do
       totalWidth = sum grid
       widths = (\w -> ColWidth (fromInteger w / fromInteger totalWidth)) <$> grid
 
-  return $ table cap'
+  extStylesEnabled <- asks (isEnabled Ext_styles . docxOptions)
+  let attr = case mbsty of
+                Just sty | extStylesEnabled -> ("", [], [("custom-style", sty)])
+                _ -> nullAttr
+  return $ tableWith attr cap'
                  (zip alignments widths)
                  (TableHead nullAttr headerCells)
                  [TableBody nullAttr 0 [] bodyCells]

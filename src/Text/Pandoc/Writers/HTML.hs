@@ -49,6 +49,7 @@ import Numeric (showHex)
 import Text.DocLayout (render, literal, Doc)
 import Text.Blaze.Internal (MarkupM (Empty), customLeaf, customParent)
 import Text.DocTemplates (FromContext (lookupContext), Context (..))
+import qualified Text.DocTemplates.Internal as DT
 import Text.Blaze.Html hiding (contents)
 import Text.Pandoc.Definition
 import Text.Pandoc.Highlighting (formatHtmlBlock, formatHtml4Block,
@@ -240,21 +241,23 @@ writeHtmlString' st opts d = do
            Just cols -> render (Just cols) $ layoutMarkup body
        Just tpl -> do
          -- warn if empty lang
-         when (isNothing (getField "lang" context :: Maybe Text)) $
+         when (isNothing (getField "lang" context :: Maybe Text) &&
+               hasVariable "lang" tpl) $
            report NoLangSpecified
-         -- check for empty pagetitle
          (context' :: Context Text) <-
+            -- check for empty pagetitle
             case getField "pagetitle" context of
                  Just (s :: Text) | not (T.null s) -> return context
-                 _ -> do
-                   let fallback = T.pack $
-                         case lookupContext "sourcefile"
-                                   (writerVariables opts) of
-                           Nothing    -> "Untitled"
-                           Just []    -> "Untitled"
-                           Just (x:_) -> takeBaseName $ T.unpack x
-                   report $ NoTitleElement fallback
-                   return $ resetField "pagetitle" (literal fallback) context
+                 _ | hasVariable "pagetitle" tpl -> do
+                       let fallback = T.pack $
+                             case lookupContext "sourcefile"
+                                       (writerVariables opts) of
+                               Nothing    -> "Untitled"
+                               Just []    -> "Untitled"
+                               Just (x:_) -> takeBaseName $ T.unpack x
+                       report $ NoTitleElement fallback
+                       return $ resetField "pagetitle" (literal fallback) context
+                   | otherwise -> return context
          return $ render colwidth $ renderTemplate tpl
              (defField "body" (layoutMarkup body) context')
 
@@ -289,8 +292,8 @@ pandocToHtml opts (Pandoc meta blocks) = do
                           lookupMetaString "description" meta
   slideVariant <- gets stSlideVariant
   abstractTitle <- translateTerm Abstract
-  let sects = adjustNumbers opts $
-              makeSections (writerNumberSections opts) Nothing $
+  let sects = makeSectionsWithOffsets
+                (writerNumberOffset opts) (writerNumberSections opts) Nothing $
               if slideVariant == NoSlides
                  then blocks
                  else prepSlides slideLevel blocks
@@ -446,6 +449,8 @@ pandocToHtml opts (Pandoc meta blocks) = do
                   defField "slideous-url" ("slideous" :: Doc Text) .
                   defField "revealjs-url" ("https://unpkg.com/reveal.js@^4/" :: Doc Text) $
                   defField "s5-url" ("s5/default" :: Doc Text) .
+                  defField "table-caption-below"
+                     (writerTableCaptionPosition opts == CaptionBelow) .
                   defField "html5" (stHtml5 st) $
                   metadata
   return (thebody, context)
@@ -678,7 +683,8 @@ toAttrs kvs = do
   addAttr html5 mbEpubVersion x y
     | T.null x = id  -- see #7546
     | html5
-      = if x `Set.member` (html5Attributes <> rdfaAttributes)
+      = if (x `Set.member` (html5Attributes <> rdfaAttributes)
+            && x /= "label") -- #10048
              || T.any (== ':') x -- e.g. epub: namespace
              || "data-" `T.isPrefixOf` x
              || "aria-" `T.isPrefixOf` x
@@ -725,30 +731,6 @@ dimensionsToAttrList attr = go Width ++ go Height
                (Just (Pixel a)) -> [(tshow dir, tshow a)]
                (Just x)         -> [("style", tshow dir <> ":" <> tshow x)]
                Nothing          -> []
-
-adjustNumbers :: WriterOptions -> [Block] -> [Block]
-adjustNumbers opts doc =
-  if all (==0) (writerNumberOffset opts)
-     then doc
-     else walk go doc
-  where
-   go (Div (ident,"section":classes,kvs) lst@(Header level _ _ : _)) =
-     Div (ident,"section":classes,map (fixnum level) kvs) lst
-   go (Header level (ident,classes,kvs) lst) =
-     Header level (ident,classes,map (fixnum level) kvs) lst
-   go x = x
-   fixnum level ("number",num) = ("number",
-                               showSecNum $ zipWith (+)
-                               (writerNumberOffset opts ++ repeat 0)
-                               (padTo level $
-                                map (fromMaybe 0 . safeRead) $
-                                T.split (=='.') num))
-   fixnum _ x = x
-   padTo n xs =
-     case n - length xs of
-       x | x > 0 -> replicate x 0 ++ xs
-         | otherwise -> xs
-   showSecNum = T.intercalate "." . map tshow
 
 blockToHtmlInner :: PandocMonad m => WriterOptions -> Block -> StateT WriterState m Html
 blockToHtmlInner opts (Plain lst) = inlineListToHtml opts lst
@@ -880,10 +862,15 @@ blockToHtmlInner opts (Div attr@(ident, classes, kvs') bs) = do
             [("role", "listitem") | isCslBibEntry && html5]
   let speakerNotes = "notes" `elem` classes
   -- we don't want incremental output inside speaker notes, see #1394
-  let opts' = if | speakerNotes -> opts{ writerIncremental = False }
-                 | "incremental" `elem` classes -> opts{ writerIncremental = True }
-                 | "nonincremental" `elem` classes -> opts{ writerIncremental = False }
-                 | otherwise -> opts
+  let (opts', isIncrDiv) =
+        if | speakerNotes ->
+             (opts{ writerIncremental = False }, False)
+           | "incremental" `elem` classes ->
+             (opts{ writerIncremental = True }, True)
+           | "nonincremental" `elem` classes ->
+             (opts{ writerIncremental = False }, True)
+           | otherwise ->
+             (opts, False)
       -- we remove "incremental" and "nonincremental" if we're in a
       -- slide presentation format.
       classes' = case slideVariant of
@@ -904,18 +891,22 @@ blockToHtmlInner opts (Div attr@(ident, classes, kvs') bs) = do
   let (divtag, classes'') = if html5 && "section" `elem` classes'
                             then (H5.section, filter (/= "section") classes')
                             else (H.div, classes')
-  if speakerNotes
-     then case slideVariant of
-               RevealJsSlides -> addAttrs opts' attr $
-                           H5.aside contents'
-               DZSlides       -> do
-                 t <- addAttrs opts' attr $
-                             H5.div contents'
-                 return $ t ! A5.role "note"
-               NoSlides       -> addAttrs opts' attr $
-                           H.div contents'
-               _              -> return mempty
-     else addAttrs opts (ident, classes'', kvs) $
+  if | isIncrDiv && (ident, classes'', kvs) == nullAttr ->
+         -- Unwrap divs that only have (non)increment information
+         pure contents
+     | speakerNotes ->
+         case slideVariant of
+              RevealJsSlides -> addAttrs opts' attr $
+                          H5.aside contents'
+              DZSlides       -> do
+                t <- addAttrs opts' attr $
+                            H5.div contents'
+                return $ t ! A5.role "note"
+              NoSlides       -> addAttrs opts' attr $
+                          H.div contents'
+              _              -> return mempty
+     | otherwise ->
+          addAttrs opts (ident, classes'', kvs) $
               divtag contents'
 blockToHtmlInner opts (RawBlock f str) = do
   ishtml <- isRawHtml f
@@ -1055,24 +1046,26 @@ blockToHtmlInner opts (Figure attrs (Caption _ captBody)  body) = do
 
   figAttrs <- attrsToHtml opts attrs
   contents <- blockListToHtml opts body
-  figCaption <- if null captBody
-                then return mempty
-                else do
-                  captCont <- blockListToHtml opts captBody
-                  return . mconcat $
+  captCont <- blockListToHtml opts captBody
+  let figCaption = mconcat $
                     if html5
                     then let fcattr = if captionIsAlt captBody body
                                       then H5.customAttribute
                                            (textTag "aria-hidden")
                                            (toValue @Text "true")
                                       else mempty
-                         in [ H5.figcaption ! fcattr $ captCont, nl ]
-                    else [ (H.div ! A.class_ "figcaption") captCont, nl ]
+                         in [ H5.figcaption ! fcattr $ captCont ]
+                    else [ (H.div ! A.class_ "figcaption") captCont ]
+  let innards = mconcat $
+                if null captBody
+                   then [nl, contents, nl]
+                   else case writerFigureCaptionPosition opts of
+                         CaptionAbove -> [nl, figCaption, nl, contents, nl]
+                         CaptionBelow -> [nl, contents, nl, figCaption, nl]
   return $
     if html5
-    then foldl (!) H5.figure figAttrs $ mconcat [nl, contents, nl, figCaption]
-    else foldl (!) H.div (A.class_ "float" : figAttrs) $ mconcat
-           [nl, contents, nl, figCaption]
+    then foldl (!) H5.figure figAttrs innards
+    else foldl (!) H.div (A.class_ "float" : figAttrs) innards
  where
   captionIsAlt capt [Plain [Image (_, _, kv) desc _]] =
     let alt = fromMaybe (stringify desc) $ lookup "alt" kv
@@ -1585,8 +1578,13 @@ inlineToHtml opts inline = do
                                            $ toHtml linkTxt
                                  , [A5.controls ""] )
                             s' = fromMaybe s $ T.stripSuffix ".gz" s
-                            normSrc = maybe (T.unpack s) uriPath (parseURIReference $ T.unpack s')
-                            (tag, specAttrs) = case mediaCategory normSrc of
+                            category =
+                              if "data:" `T.isPrefixOf` s
+                                 then Just . T.takeWhile (/= '/') . T.drop 5 $ s
+                                 else case parseURIReference (T.unpack s') of
+                                        Just u -> mediaCategory $ uriPath u
+                                        Nothing -> mediaCategory (T.unpack s)
+                            (tag, specAttrs) = case category of
                               Just "image" -> imageTag
                               Just "video" -> mediaTag H5.video "Video"
                               Just "audio" -> mediaTag H5.audio "Audio"
@@ -1620,7 +1618,7 @@ inlineToHtml opts inline = do
                                       _          -> link
     (Cite cits il)-> do contents <- inlineListToHtml opts
                                       (if html5
-                                          then walk addRoleToLink il
+                                          then walk addBibliorefRole il
                                           else il)
                         let citationIds = T.unwords $ map citationId cits
                         let result = H.span ! A.class_ "citation" $ contents
@@ -1628,10 +1626,11 @@ inlineToHtml opts inline = do
                                     then result ! customAttribute "data-cites" (toValue citationIds)
                                     else result
 
-addRoleToLink :: Inline -> Inline
-addRoleToLink (Link (id',classes,kvs) ils (src,tit)) =
+addBibliorefRole :: Inline -> Inline
+addBibliorefRole (Link (id',classes,kvs) ils (src,tit))
+   | "#ref-" `T.isPrefixOf` src =
   Link (id',classes,("role","doc-biblioref"):kvs) ils (src,tit)
-addRoleToLink x = x
+addBibliorefRole x = x
 
 blockListToNote :: PandocMonad m
                 => WriterOptions -> Text -> [Block]
@@ -1771,3 +1770,16 @@ toURI isHtml5 t = if isHtml5 then t else escapeURI t
  where
    escapeURI = T.pack . escapeURIString (not . needsEscaping) . T.unpack
    needsEscaping c = isSpace c || T.any (== c) "<>|\"{}[]^`" || not (isAscii c)
+
+hasVariable :: Text -> DT.Template a -> Bool
+hasVariable var = checkVar
+ where
+   matches v' = T.intercalate "." (DT.varParts v') == var
+   checkVar (DT.Interpolate v) = matches v
+   checkVar (DT.Conditional v t1 t2) = matches v || checkVar t1 || checkVar t2
+   checkVar (DT.Iterate v t1 t2) = matches v || checkVar t1 || checkVar t2
+   checkVar (DT.Nested t) = checkVar t
+   checkVar (DT.Partial _ t) = checkVar t
+   checkVar (DT.Concat t1 t2) = checkVar t1 || checkVar t2
+   checkVar (DT.Literal _) = False
+   checkVar DT.Empty = False

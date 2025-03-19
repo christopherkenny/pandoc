@@ -22,7 +22,7 @@ import Control.Monad ( unless , zipWithM )
 import Control.Monad.Except ( throwError )
 import Data.Array ( elems, (!), assocs, indices )
 import Data.Text (Text)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Text.Pandoc.Definition
     ( ColSpec,
       Caption(Caption),
@@ -46,7 +46,7 @@ import Text.Pandoc.Writers.Docx.Types
       withParaPropM )
 import Control.Monad.Reader (asks)
 import Text.Pandoc.Shared ( tshow, stringify )
-import Text.Pandoc.Options (WriterOptions, isEnabled)
+import Text.Pandoc.Options (WriterOptions(..), isEnabled, CaptionPosition(..))
 import Text.Pandoc.Extensions (Extension(Ext_native_numbering))
 import Text.Pandoc.Error (PandocError(PandocSomeError))
 import Text.Printf (printf)
@@ -71,7 +71,7 @@ tableToOpenXML :: PandocMonad m
                -> WS m [Content]
 tableToOpenXML opts blocksToOpenXML gridTable = do
   setFirstPara
-  let (Grid.Table (ident,_,_) caption colspecs _rowheads thead tbodies tfoot) =
+  let (Grid.Table (ident,_,tableAttr) caption colspecs _rowheads thead tbodies tfoot) =
         gridTable
   let (Caption _maybeShortCaption captionBlocks) = caption
   tablenum <- gets stNextTableNum
@@ -109,11 +109,12 @@ tableToOpenXML opts blocksToOpenXML gridTable = do
   let tblLookVal = if hasHeader then (0x20 :: Int) else 0
   let (gridCols, tblWattr) = tableLayout (elems colspecs)
   listLevel <- asks envListLevel
+  let tblStyle =  fromMaybe "Table" (lookup "custom-style" tableAttr)
   let indent = (listLevel + 1) * 720
   let hasWidths = not $ all ((== ColWidthDefault) . snd) colspecs
   let tbl = mknode "w:tbl" []
         ( mknode "w:tblPr" []
-          ( [ mknode "w:tblStyle" [("w:val","Table")] (),
+          ( [ mknode "w:tblStyle" [("w:val",tblStyle)] (),
               mknode "w:tblW" tblWattr () ] ++
             [ mknode "w:jc" [("w:val","left")] () | indent > 0 ] ++
             [ mknode "w:tblInd" [("w:w", tshow indent),("w:type","dxa")] ()
@@ -134,7 +135,10 @@ tableToOpenXML opts blocksToOpenXML gridTable = do
           : head' ++ mconcat bodies ++ foot'
         )
   modify $ \s -> s { stInTable = False }
-  return $ captionXml ++ [Elem tbl]
+  return $
+    case writerTableCaptionPosition opts of
+      CaptionAbove -> captionXml ++ [Elem tbl]
+      CaptionBelow -> Elem tbl : captionXml
 
 addLabel :: Text -> Text -> Int -> [Block] -> [Block]
 addLabel tableid tablename tablenum bs =

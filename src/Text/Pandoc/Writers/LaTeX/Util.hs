@@ -108,11 +108,11 @@ stringToLaTeX context zs = do
          '}' -> emits "\\}"
          '?' | ligatures ->  -- avoid ?` ligature
            case xs of
-             '`':_ -> emits "?{}"
+             '`':_ -> emits "?{\\kern0pt}" -- se #10610
              _     -> emitc x
          '!' | ligatures ->  -- avoid !` ligature
            case xs of
-             '`':_ -> emits "!{}"
+             '`':_ -> emits "!{\\kern0pt}"
              _     -> emitc x
          '`' | ctx == CodeString -> emitcseq "\\textasciigrave"
          '$' -> emits "\\$"
@@ -267,7 +267,7 @@ hypertarget ident = do
       return $ text "\\protect\\hypertarget" <> braces ref <> "{}"
      else do
       label <- labelFor ident
-      return $ text "\\phantomsection" <> label
+      return $ text "\\protect\\phantomsection" <> label
 
 labelFor :: PandocMonad m => Text -> LW m (Doc Text)
 labelFor ""    = return empty

@@ -914,6 +914,7 @@ registerMedia fp caption = do
                  Just Svg  -> Just ".svg"
                  Just Emf  -> Just ".emf"
                  Just Tiff -> Just ".tiff"
+                 Just Webp -> Just ".webp"
                  Nothing   -> Nothing
 
   let newGlobalId = fromMaybe (maxGlobalId + 1) (M.lookup fp globalIds)
@@ -1751,7 +1752,9 @@ metadataToElement layout titleElems subtitleElems authorsElems dateElems
   , Just cSld <- findChild (elemName ns "p" "cSld") layout
   , Just spTree <- findChild (elemName ns "p" "spTree") cSld = do
       let combinedAuthorElems = intercalate [Break] authorsElems
-          subtitleAndAuthorElems = intercalate [Break, Break] [subtitleElems, combinedAuthorElems]
+          subtitleAndAuthorElems = intercalate [Break, Break] $
+                                    filter (not . null)
+                                     [subtitleElems, combinedAuthorElems]
       (titleId, titleElement) <- nonBodyTextToElement layout [PHType "ctrTitle"] titleElems
       (subtitleId, subtitleElement) <- nonBodyTextToElement layout [PHType "subTitle"] subtitleAndAuthorElems
       (dateId, dateElement) <- nonBodyTextToElement layout [PHType "dt"] dateElems

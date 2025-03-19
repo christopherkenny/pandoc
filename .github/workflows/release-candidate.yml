@@ -77,15 +77,20 @@ jobs:
 
   macos:
 
-    runs-on: macos-12
+    runs-on: macos-13
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install ghcup
+      run: |
+        brew install ghcup
 
     - name: Install ghc and cabal
       run: |
         ghcup install ghc --set 9.6
         ghcup install cabal --set 3.10
+        echo "$HOME/.ghcup/bin" >> "${GITHUB_PATH}"
 
     - name: Create release
       run: |

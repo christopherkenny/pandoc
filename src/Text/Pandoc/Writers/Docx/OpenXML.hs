@@ -23,9 +23,9 @@ module Text.Pandoc.Writers.Docx.OpenXML ( writeOpenXML, maxListLevel ) where
 import Control.Monad (when, unless)
 import Control.Applicative ((<|>))
 import Control.Monad.Except (catchError)
+import Crypto.Hash (hashWith, SHA1(SHA1))
 import qualified Data.ByteString.Lazy as BL
 import Data.Char (isLetter, isSpace)
-import Data.Bifunctor (first)
 import Text.Pandoc.Char (isCJK)
 import Data.Ord (comparing)
 import Data.String (fromString)
@@ -36,8 +36,6 @@ import Control.Monad.Reader ( asks, MonadReader(local) )
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Text (Text)
-import qualified Data.Text.Lazy as TL
-import Data.Digest.Pure.SHA (sha1, showDigest)
 import Skylighting
 import Text.DocLayout (hcat, vcat, literal, render)
 import Text.Pandoc.Class (PandocMonad, report, getMediaBag)
@@ -45,7 +43,8 @@ import Text.Pandoc.Translations (Term(Abstract), translateTerm)
 import Text.Pandoc.MediaBag (lookupMedia, MediaItem(..))
 import qualified Text.Pandoc.Translations as Term
 import qualified Text.Pandoc.Class.PandocMonad as P
-import Text.Pandoc.UTF8 (fromTextLazy)
+import qualified Text.Pandoc.Builder as B
+import Text.Pandoc.UTF8 (fromText)
 import Text.Pandoc.Definition
 import Text.Pandoc.Highlighting (highlight)
 import Text.Pandoc.Templates (compileDefaultTemplate, renderTemplate)
@@ -171,6 +170,56 @@ makeTOC opts = do
       ])
     ]] -- w:sdt
 
+makeLOF :: (PandocMonad m) => WriterOptions -> WS m [Element]
+makeLOF opts = do
+  let lofCmd = "TOC \\h \\z \\t \"Image Caption\" \\c" :: Text
+  lofTitle <- B.toList <$> B.text <$> translateTerm Term.ListOfFigures
+  title <- withParaPropM (pStyleM "TOC Heading") (blocksToOpenXML opts [Para lofTitle])
+  return
+    [mknode "w:sdt" [] [
+      mknode "w:sdtPr" [] (
+        mknode "w:docPartObj" []
+          [mknode "w:docPartGallery" [("w:val","List of Figures")] (),
+          mknode "w:docPartUnique" [] ()]
+         -- w:docPartObj
+      ), -- w:sdtPr
+      mknode "w:sdtContent" [] (title ++ [ Elem $
+        mknode "w:p" [] (
+          mknode "w:r" [] [
+            mknode "w:fldChar" [("w:fldCharType","begin"),("w:dirty","true")] (),
+            mknode "w:instrText" [("xml:space","preserve")] lofCmd,
+            mknode "w:fldChar" [("w:fldCharType","separate")] (),
+            mknode "w:fldChar" [("w:fldCharType","end")] ()
+          ] -- w:r
+        ) -- w:p
+      ]) -- w:sdtContent
+    ]] -- w:sdt
+
+makeLOT :: (PandocMonad m) => WriterOptions -> WS m [Element]
+makeLOT opts = do
+  let lotCmd = "TOC \\h \\z \\t \"Table Caption\" \\c" :: Text
+  lotTitle <- B.toList <$> B.text <$> translateTerm Term.ListOfTables
+  title <- withParaPropM (pStyleM "TOC Heading") (blocksToOpenXML opts [Para lotTitle])
+  return
+    [mknode "w:sdt" [] [
+      mknode "w:sdtPr" [] (
+        mknode "w:docPartObj" []
+          [mknode "w:docPartGallery" [("w:val","List of Tables")] (),
+          mknode "w:docPartUnique" [] ()]
+         -- w:docPartObj
+      ), -- w:sdtPr
+      mknode "w:sdtContent" [] (title ++ [ Elem $
+        mknode "w:p" [] (
+          mknode "w:r" [] [
+            mknode "w:fldChar" [("w:fldCharType","begin"),("w:dirty","true")] (),
+            mknode "w:instrText" [("xml:space","preserve")] lotCmd,
+            mknode "w:fldChar" [("w:fldCharType","separate")] (),
+            mknode "w:fldChar" [("w:fldCharType","end")] ()
+          ] -- w:r
+        ) -- w:p
+      ]) -- w:sdtContent
+    ]] -- w:sdt
+
 -- | Convert Pandoc document to rendered document contents plus two lists of
 -- OpenXML elements (footnotes and comments).
 writeOpenXML :: PandocMonad m
@@ -179,6 +228,8 @@ writeOpenXML :: PandocMonad m
 writeOpenXML opts (Pandoc meta blocks) = do
   setupTranslations meta
   let includeTOC = writerTableOfContents opts || lookupMetaBool "toc" meta
+  let includeLOF = writerListOfFigures opts || lookupMetaBool "lof" meta
+  let includeLOT = writerListOfTables opts || lookupMetaBool "lot" meta
   abstractTitle <- case lookupMeta "abstract-title" meta of
       Just (MetaBlocks bs)   -> pure $ stringify bs
       Just (MetaInlines ils) -> pure $ stringify ils
@@ -225,19 +276,40 @@ writeOpenXML opts (Pandoc meta blocks) = do
   toc <- if includeTOC
             then makeTOC opts
             else return []
+  lof <- if includeLOF
+            then makeLOF opts
+            else return []
+  lot <- if includeLOT
+            then makeLOT opts
+            else return []
   metadata <- metaToContext opts
                  (fmap (vcat . map (literal . showContent)) . blocksToOpenXML opts)
                  (fmap (hcat . map (literal . showContent)) . inlinesToOpenXML opts)
                  meta
+  cStyleMap <- gets (smParaStyle . stStyleMaps)
+  let styleIdOf name = fromStyleId $ getStyleIdFromName name cStyleMap
+  renderedSectPr <- maybe mempty ppElement <$> asks envSectPr
+
   let context = resetField "body" body
               . resetField "toc"
                    (vcat (map (literal . showElement) toc))
+              . resetField "lof"
+                   (vcat (map (literal . showElement) lof))
+              . resetField "lot"
+                   (vcat (map (literal . showElement) lot))
               . resetField "title" title
               . resetField "subtitle" subtitle
               . resetField "author" author
               . resetField "date" date
               . resetField "abstract-title" abstractTitle
               . resetField "abstract" abstract
+              . resetField "title-style-id" (styleIdOf "Title")
+              . resetField "subtitle-style-id" (styleIdOf "Subtitle")
+              . resetField "author-style-id" (styleIdOf "Author")
+              . resetField "date-style-id" (styleIdOf "Date")
+              . resetField "abstract-title-style-id" (styleIdOf "AbstractTitle")
+              . resetField "abstract-style-id" (styleIdOf "Abstract")
+              . resetField "sectpr" renderedSectPr
               $ metadata
   tpl <- maybe (lift $ compileDefaultTemplate "openxml") pure $ writerTemplate opts
   let rendered = render Nothing $ renderTemplate tpl context
@@ -306,6 +378,10 @@ blockToOpenXML' opts (Div (ident,_classes,kvs) bs) = do
   wrapBookmark ident $ header <> contents
 blockToOpenXML' opts (Header lev (ident,_,kvs) lst) = do
   setFirstPara
+  let isSection = case writerTopLevelDivision opts of
+                     TopLevelChapter -> lev == 1
+                     TopLevelPart -> lev <= 2
+                     _ -> False
   paraProps <- withParaPropM (pStyleM (fromString $ "Heading "++show lev)) $
                     getParaProps False
   number <-
@@ -319,14 +395,22 @@ blockToOpenXML' opts (Header lev (ident,_,kvs) lst) = do
                 Nothing -> return []
            else return []
   contents <- (number ++) <$> inlinesToOpenXML opts lst
-  if T.null ident
-     then return [Elem $ mknode "w:p" [] (map Elem paraProps ++ contents)]
-     else do
-       let bookmarkName = ident
-       modify $ \s -> s{ stSectionIds = Set.insert bookmarkName
-                                      $ stSectionIds s }
-       bookmarkedContents <- wrapBookmark bookmarkName contents
-       return [Elem $ mknode "w:p" [] (map Elem paraProps ++ bookmarkedContents)]
+  sectpr <- asks envSectPr
+  let addSectionBreak
+       | isSection
+       , Just sectPrElem <- sectpr
+        = (Elem (mknode "w:p" []
+                   (mknode "w:pPr" [] [sectPrElem])) :)
+       | otherwise = id
+  addSectionBreak <$>
+    if T.null ident
+       then return [Elem $ mknode "w:p" [] (map Elem paraProps ++ contents)]
+       else do
+         let bookmarkName = ident
+         modify $ \s -> s{ stSectionIds = Set.insert bookmarkName
+                                        $ stSectionIds s }
+         bookmarkedContents <- wrapBookmark bookmarkName contents
+         return [Elem $ mknode "w:p" [] (map Elem paraProps ++ bookmarkedContents)]
 blockToOpenXML' opts (Plain lst) = do
   isInTable <- gets stInTable
   isInList <- gets stInList
@@ -391,26 +475,21 @@ blockToOpenXML' opts (Table attr caption colspecs thead tbodies tfoot) = do
   wrapBookmark tableId content
 blockToOpenXML' opts el
   | BulletList lst <- el
-  = case mapM toTaskListItem lst of
-      Just items -> addOpenXMLList (map (first (Just . CheckboxMarker)) items)
-      Nothing -> addOpenXMLList $ zip (Just BulletMarker : repeat Nothing) lst
+    = case mapM toTaskListItem lst of
+      Just items -> mconcat <$>
+        mapM (\(checked, bs) -> addOpenXMLList (CheckboxMarker checked) [bs]) items
+      Nothing -> addOpenXMLList BulletMarker lst
   | OrderedList (start, numstyle, numdelim) lst <- el
-  = addOpenXMLList $
-    zip (Just (NumberMarker numstyle numdelim start) : repeat Nothing) lst
+    = addOpenXMLList (NumberMarker numstyle numdelim start) lst
   where
-    addOpenXMLList items = do
-      exampleid <- case items of
-                        (Just (NumberMarker Example _ _),_) : _ -> gets stExampleId
-                        _ -> return Nothing
-      l <- asList $ mconcat <$>
-              mapM (\(mbmarker, bs) -> do
-                      numid <- case mbmarker of
-                        Nothing -> getNumId
-                        Just marker -> do
-                          addList marker
-                          getNumId
-                      listItemToOpenXML opts (fromMaybe numid exampleid) bs)
-              items
+    addOpenXMLList marker items = do
+      addList marker
+      numid <- getNumId
+      exampleid <- case marker of
+                     NumberMarker Example _ _ -> gets stExampleId
+                     _ -> return Nothing
+      l <- asList $ concat <$>
+             mapM (listItemToOpenXML opts $ fromMaybe numid exampleid) items
       setFirstPara
       return l
 blockToOpenXML' opts (DefinitionList items) = do
@@ -461,7 +540,10 @@ blockToOpenXML' opts (Figure (ident, _, _) (Caption _ longcapt) body) = do
     (Para xs  : bs) -> imageCaption (fstCaptionPara xs : bs)
     (Plain xs : bs) -> imageCaption (fstCaptionPara xs : bs)
     _               -> imageCaption longcapt
-  wrapBookmark ident $ contentsNode : captionNode
+  wrapBookmark ident $
+    case writerFigureCaptionPosition opts of
+      CaptionBelow -> contentsNode : captionNode
+      CaptionAbove -> captionNode ++ [contentsNode]
 
 toFigureTable :: PandocMonad m
               => WriterOptions -> [Block] -> WS m Content
@@ -958,6 +1040,7 @@ inlineToOpenXML' opts (Image attr@(imgident, _, _) alt (src, title)) = do
             Just Svg  -> ".svg"
             Just Emf  -> ".emf"
             Just Tiff -> ".tiff"
+            Just Webp -> ".webp"
             Nothing   -> ""
         imgpath = "media/" <> ident <> imgext
         mbMimeType = mt <|> getMimeType (T.unpack imgpath)
@@ -1022,7 +1105,7 @@ toBookmarkName s
   | Just (c, _) <- T.uncons s
   , isLetter c
   , T.length s <= 40 = s
-  | otherwise = T.pack $ 'X' : drop 1 (showDigest (sha1 (fromTextLazy $ TL.fromStrict s)))
+  | otherwise = T.pack $ 'X' : drop 1 (show (hashWith SHA1 (fromText s)))
 
 maxListLevel :: Int
 maxListLevel = 8

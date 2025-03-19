@@ -33,14 +33,13 @@ import Control.Monad
 import Data.Containers.ListUtils (nubOrd)
 import Data.Char (isDigit)
 import Data.List (intersperse, (\\))
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe, isNothing,
-                   maybeToList)
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe, isNothing)
 import Data.Monoid (Any (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.URI (unEscapeString)
-import Text.DocTemplates (FromContext(lookupContext), renderTemplate)
-import Text.Collate.Lang (renderLang, Lang(langLanguage))
+import Text.DocTemplates (FromContext(lookupContext), Val(..), renderTemplate)
+import Text.Collate.Lang (renderLang)
 import Text.Pandoc.Class.PandocMonad (PandocMonad, report, toLang)
 import Text.Pandoc.Definition
 import Text.Pandoc.Highlighting (formatLaTeXBlock, formatLaTeXInline, highlight,
@@ -157,11 +156,15 @@ pandocToLaTeX options (Pandoc meta blocks) = do
                                           _               -> "article"
   when (documentClass `elem` chaptersClasses) $
      modify $ \s -> s{ stHasChapters = True }
-  case lookupContext "csquotes" (writerVariables options) `mplus`
-       (stringify <$> lookupMeta "csquotes" meta) of
-     Nothing      -> return ()
-     Just "false" -> return ()
-     Just _       -> modify $ \s -> s{stCsquotes = True}
+  let csquotes =
+        case lookupContext "csquotes" (writerVariables options) of
+          Just (BoolVal v) -> v
+          Just (SimpleVal (Text _ t)) -> t /= ("false" :: Text)
+          _ -> case stringify <$> lookupMeta "csquotes" meta of
+                  Nothing -> False
+                  Just "false" -> False
+                  Just _ -> True
+  when csquotes $ modify $ \s -> s{stCsquotes = True}
   let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
                                  (blocks', [])
                                else case reverse blocks' of
@@ -194,6 +197,8 @@ pandocToLaTeX options (Pandoc meta blocks) = do
                     $ lookupMetaInlines "nocite" meta
 
   let context  =  defField "toc" (writerTableOfContents options) $
+                  defField "lof" (writerListOfFigures options) $
+                  defField "lot" (writerListOfTables options) $
                   defField "toc-depth" (tshow
                                         (writerTOCDepth options -
                                               if stHasChapters st
@@ -259,15 +264,16 @@ pandocToLaTeX options (Pandoc meta blocks) = do
                       (literal $ renderLang l)) mblang
         $ maybe id (\l -> defField "babel-lang"
                       (literal l)) babelLang
+        $ (case babelLang of -- see #8283
+                Just l | l `notElem` ldfLanguages
+                         -> defField "babeloptions" ("provide=*" :: Text)
+                _ -> id)
         $ defField "babel-otherlangs"
              (map literal
-               (nubOrd . catMaybes . filter (/= babelLang)
+               (filter (`elem` ldfLanguages) .
+                nubOrd . catMaybes .
+                filter (/= babelLang)
                 $ map toBabel docLangs))
-        $ defField "selnolig-langs"
-             (literal . T.intercalate "," $
-               let langs = docLangs ++ maybeToList mblang
-               in (["english" | any ((== "en") . langLanguage) langs] ++
-                   ["german" | any ((== "de") . langLanguage) langs]))
         $ defField "latex-dir-rtl"
            ((render Nothing <$> getField "dir" context) ==
                Just ("rtl" :: Text)) context
@@ -375,8 +381,9 @@ blockToLaTeX (Div (identifier,classes,kvs) bs) = do
      then modify $ \st -> st{ stIncremental = True }
      else when (beamer && "nonincremental" `elem` classes) $
              modify $ \st -> st { stIncremental = False }
-  result <- if identifier == "refs" || -- <- for backwards compatibility
-               "csl-bib-body" `elem` classes
+  result <- if (identifier == "refs" || -- <- for backwards compatibility
+                "csl-bib-body" `elem` classes) &&
+               (not (null bs))
                then do
                  modify $ \st -> st{ stHasCslRefs = True }
                  inner <- blockListToLaTeX bs
@@ -423,6 +430,7 @@ blockToLaTeX (LineBlock lns) =
   blockToLaTeX $ linesToPara lns
 blockToLaTeX (BlockQuote lst) = do
   beamer <- gets stBeamer
+  csquotes <- liftM stCsquotes get
   case lst of
        [b] | beamer && isListBlock b -> do
          oldIncremental <- gets stIncremental
@@ -435,7 +443,10 @@ blockToLaTeX (BlockQuote lst) = do
          modify (\s -> s{stInQuote = True})
          contents <- blockListToLaTeX lst
          modify (\s -> s{stInQuote = oldInQuote})
-         return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
+         let envname = if csquotes then "displayquote" else "quote"
+         return $ ("\\begin" <> braces envname) $$
+                  contents $$
+                  ("\\end" <> braces envname)
 blockToLaTeX (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
   inNote <- stInNote <$> get
@@ -523,10 +534,11 @@ blockToLaTeX (BulletList lst) = do
   let spacing = if isTightList lst
                    then text "\\tightlist"
                    else empty
-  return $ text ("\\begin{itemize}" <> inc) $$
+  return $ -- force list to start on new line if in a defn list
+             (if isFirstInDefinition then "\\hfill" else mempty) $$
+             text ("\\begin{itemize}" <> inc) $$
              spacing $$
              -- force list at beginning of definition to start on new line
-             (if isFirstInDefinition then "\\item[]" else mempty) $$
              vcat items $$
              "\\end{itemize}"
 blockToLaTeX (OrderedList _ []) = return empty -- otherwise latex error
@@ -574,12 +586,12 @@ blockToLaTeX (OrderedList (start, numstyle, numdelim) lst) = do
   let spacing = if isTightList lst
                    then text "\\tightlist"
                    else empty
-  return $ text ("\\begin{enumerate}" <> inc)
+  return $ -- force list at beginning of definition to start on new line
+           (if isFirstInDefinition then "\\hfill" else mempty)
+         $$ text ("\\begin{enumerate}" <> inc)
          $$ stylecommand
          $$ resetcounter
          $$ spacing
-         -- force list at beginning of definition to start on new line
-         $$ (if isFirstInDefinition then "\\item[]" else mempty)
          $$ vcat items
          $$ "\\end{enumerate}"
 blockToLaTeX (DefinitionList []) = return empty
@@ -605,6 +617,7 @@ blockToLaTeX (Table attr blkCapt specs thead tbodies tfoot) =
   tableToLaTeX inlineListToLaTeX blockListToLaTeX
                (Ann.toTable attr blkCapt specs thead tbodies tfoot)
 blockToLaTeX (Figure (ident, _, _) captnode body) = do
+  opts <- gets stOptions
   (capt, captForLof, footnotes) <- getCaption inlineListToLaTeX True captnode
   lab <- labelFor ident
   let caption = "\\caption" <> captForLof <> braces capt <> lab
@@ -615,7 +628,10 @@ blockToLaTeX (Figure (ident, _, _) captnode body) = do
     [b] -> blockToLaTeX b
     bs  -> mconcat . intersperse (cr <> "\\hfill") <$>
            mapM (toSubfigure (length bs)) bs
-  let innards = "\\centering" $$ contents $$ caption <> cr
+  let innards = "\\centering" $$
+                (case writerFigureCaptionPosition opts of
+                  CaptionBelow -> contents $$ caption
+                  CaptionAbove -> caption $$ contents) <> cr
   modify $ \st ->
     st{ stInFigure = isSubfigure
       , stSubfigure = stSubfigure st || isSubfigure
@@ -1120,8 +1136,9 @@ inlineToLaTeX (Note contents) = do
   let noteContents = nest 2 contents' <> optnl
   beamer <- gets stBeamer
   -- in beamer slides, display footnote from current overlay forward
+  -- and ensure that the note is on the frame, not e.g. the column (#5769)
   let beamerMark = if beamer
-                      then text "<.->"
+                      then text "<.->[frame]"
                       else empty
   if externalNotes
      then do
@@ -1170,3 +1187,96 @@ inSoulCommand pa = do
   result <- pa
   modify $ \st -> st{ stInSoulCommand = oldInSoulCommand }
   pure result
+
+-- Babel languages with a .ldf that works well with all engines (see #8283).
+-- We follow the guidance from the Babel documentation:
+-- "In general, you should do this for European languages written in Latin
+-- and Cyrillic scripts, as well as for Vietnamese."
+ldfLanguages :: [Text]
+ldfLanguages =
+  [ "magyar"
+  , "croatian"
+  , "ngerman"
+  , "germanb"
+  , "german"
+  , "austrian"
+  , "ngermanb"
+  , "naustrian"
+  , "nswissgerman"
+  , "swissgerman"
+  , "italian"
+  , "greek"
+  , "azerbaijani"
+  , "american"
+  , "newzealand"
+  , "UKenglish"
+  , "USenglish"
+  , "australian"
+  , "british"
+  , "canadian"
+  , "english"
+  , "bahasa"
+  , "slovak"
+  , "finnish"
+  , "occitan"
+  , "swedish"
+  , "brazil"
+  , "portuguese"
+  , "portuges"
+  , "brazilian"
+  , "spanish"
+  , "norwegian"
+  , "norsk"
+  , "nynorsk"
+  , "bulgarian"
+  , "breton"
+  , "belarusian"
+  , "piedmontese"
+  , "esperanto"
+  , "lithuanian"
+  , "ukraineb"
+  , "scottishgaelic"
+  , "scottish"
+  , "dutch"
+  , "afrikaans"
+  , "czech"
+  , "serbian"
+  , "latvian"
+  , "catalan"
+  , "basque"
+  , "albanian"
+  , "irish"
+  , "serbianc"
+  , "interlingua"
+  , "bosnian"
+  , "friulan"
+  , "romanian"
+  , "icelandic"
+  , "classiclatin"
+  , "ecclesiasticlatin"
+  , "medievallatin"
+  , "latin"
+  , "georgian"
+  , "macedonian"
+  , "welsh"
+  , "vietnamese"
+  , "romansh"
+  , "danish"
+  , "lsorbian"
+  , "usorbian"
+  , "polish-compat"
+  , "polish"
+  , "estonian"
+  , "french"
+  , "frenchb"
+  , "canadien"
+  , "acadian"
+  , "francais"
+  , "turkish"
+  , "hindi"
+  , "northernsami"
+  , "samin"
+  , "russianb"
+  , "galician"
+  , "slovene"
+  ]

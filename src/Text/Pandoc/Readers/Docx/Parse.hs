@@ -43,6 +43,7 @@ module Text.Pandoc.Readers.Docx.Parse ( Docx(..)
                                       , ChangeType(..)
                                       , ChangeInfo(..)
                                       , FieldInfo(..)
+                                      , IndexEntry(..)
                                       , Level(..)
                                       , ParaStyleName
                                       , CharStyleName
@@ -118,7 +119,7 @@ data ReaderState = ReaderState { stateWarnings :: [T.Text]
                  deriving Show
 
 data FldCharState = FldCharOpen
-                  | FldCharFieldInfo FieldInfo
+                  | FldCharFieldInfo T.Text
                   | FldCharContent FieldInfo [ParPart]
                   deriving (Show)
 
@@ -283,8 +284,10 @@ defaultParagraphStyle = ParagraphStyle { pStyle = []
 
 
 data BodyPart = Paragraph ParagraphStyle [ParPart]
+              | Heading Int ParaStyleName ParagraphStyle T.Text T.Text (Maybe Level)
+                 [ParPart]
               | ListItem ParagraphStyle T.Text T.Text (Maybe Level) [ParPart]
-              | Tbl T.Text TblGrid TblLook [Row]
+              | Tbl (Maybe T.Text) T.Text TblGrid TblLook [Row]
               | Captioned ParagraphStyle [ParPart] BodyPart
               | HRule
               deriving Show
@@ -791,13 +794,15 @@ elemToBodyPart ns element
 elemToBodyPart ns element
   | isElem ns "w" "p" element
   , Just (numId, lvl) <- getNumInfo ns element = do
+    lvlInfo <- lookupLevel numId lvl <$> asks envNumbering
     parstyle <- elemToParagraphStyle ns element
                 <$> asks envParStyles
                 <*> asks envNumbering
     parparts <- mconcat <$> mapD (elemToParPart ns) (elChildren element)
     case pHeading parstyle of
       Nothing -> mkListItem parstyle numId lvl parparts
-      Just _  -> return $ Paragraph parstyle parparts
+      Just (parstylename, lev)
+        -> return $ Heading lev parstylename parstyle numId lvl lvlInfo parparts
 elemToBodyPart ns element
   | isElem ns "w" "p" element
   , [Elem ppr] <- elContent element
@@ -836,8 +841,11 @@ elemToBodyPart ns element
       case pHeading parstyle of
         Nothing | Just (numId, lvl) <- pNumInfo parstyle -> do
                     mkListItem parstyle numId lvl parparts
-        _ -> return $ Paragraph parstyle parparts
-
+        Just (parstylename, lev) -> do
+          let (numId, lvl) = fromMaybe ("","") $ pNumInfo parstyle
+          lvlInfo <- lookupLevel numId lvl <$> asks envNumbering
+          return $ Heading lev parstylename parstyle numId lvl lvlInfo parparts
+        Nothing -> return $ Paragraph parstyle parparts
 elemToBodyPart ns element
   | isElem ns "w" "tbl" element = do
     let tblProperties = findChildByName ns "w" "tblPr" element
@@ -846,6 +854,9 @@ elemToBodyPart ns element
                    >>= findAttrByName ns "w" "val"
         description = fromMaybe "" $ tblProperties
                        >>= findChildByName ns "w" "tblDescription"
+                       >>= findAttrByName ns "w" "val"
+        mbstyle = tblProperties
+                       >>= findChildByName ns "w" "tblStyle"
                        >>= findAttrByName ns "w" "val"
         grid' = case findChildByName ns "w" "tblGrid" element of
           Just g  -> elemToTblGrid ns g
@@ -859,7 +870,7 @@ elemToBodyPart ns element
     grid <- grid'
     tblLook <- tblLook'
     rows <- mapD (elemToRow ns) (elChildren element)
-    return $ Tbl (caption <> description) grid tblLook rows
+    return $ Tbl mbstyle (caption <> description) grid tblLook rows
 elemToBodyPart _ _ = throwError WrongElem
 
 lookupRelationship :: DocumentLocation -> RelId -> [Relationship] -> Maybe Target
@@ -934,6 +945,10 @@ example (omissions and my comments in brackets):
         <w:fldChar w:fldCharType="end"/>
       </w:r>
 
+Note that there may be mulitple w:instrText elements in a row.
+For example, you might first have ` XE "`, then `Kay, Alan`, then `"`.
+The texts in all of them should be concatenated before it is processed!
+
 So we do this in a number of steps. If we encounter the fldchar begin
 tag, we start open a fldchar state variable (see state above). We add
 the instrtext to it as FieldInfo. Then we close that and start adding
@@ -954,13 +969,15 @@ elemToParPart ns element
         _ | fldCharType == "begin" -> do
           modify $ \st -> st {stateFldCharState = FldCharOpen : fldCharState}
           return []
-        FldCharFieldInfo info : ancestors | fldCharType == "separate" -> do
+        FldCharFieldInfo t : ancestors | fldCharType == "separate" -> do
+          info <- eitherToD $ parseFieldInfo t
           modify $ \st -> st {stateFldCharState = FldCharContent info [] : ancestors}
           return []
-        -- Some fields have no content, since Pandoc doesn't understand any of those fields, we can just close it.
-        FldCharFieldInfo _ : ancestors | fldCharType == "end" -> do
+        -- Some fields have no content, e.g. index XE:
+        FldCharFieldInfo t : ancestors | fldCharType == "end" -> do
           modify $ \st -> st {stateFldCharState = ancestors}
-          return []
+          info <- eitherToD $ parseFieldInfo t
+          return [Field info []]
         [FldCharContent info children] | fldCharType == "end" -> do
           modify $ \st -> st {stateFldCharState = []}
           return [Field info $ reverse children]
@@ -975,8 +992,13 @@ elemToParPart ns element
       fldCharState <- gets stateFldCharState
       case fldCharState of
         FldCharOpen : ancestors -> do
-          info <- eitherToD $ parseFieldInfo $ strContent instrText
-          modify $ \st -> st {stateFldCharState = FldCharFieldInfo info : ancestors}
+          modify $ \st -> st {stateFldCharState =
+                               FldCharFieldInfo (strContent instrText) : ancestors}
+          return []
+        FldCharFieldInfo t : ancestors -> do
+          modify $ \st -> st {stateFldCharState =
+                               FldCharFieldInfo (t <> strContent instrText) :
+                                ancestors}
           return []
         _ -> return []
 {-
@@ -1170,7 +1192,7 @@ elemToRun ns element
   | isElem ns "w" "r" element
   , Just altCont <- findChildByName ns "mc" "AlternateContent" element =
     do let choices = findChildrenByName ns "mc" "Choice" altCont
-           choiceChildren = map head $ filter (not . null) $ map elChildren choices
+           choiceChildren = concatMap (take 1 . elChildren) choices
        outputs <- mapD (childElemToRun ns) choiceChildren
        case outputs of
          r : _ -> return r

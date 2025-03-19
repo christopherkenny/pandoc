@@ -18,7 +18,10 @@ module Text.Pandoc.Writers.Typst (
   ) where
 import Text.Pandoc.Definition
 import Text.Pandoc.Class ( PandocMonad)
-import Text.Pandoc.Options ( WriterOptions(..), WrapOption(..), isEnabled )
+import Text.Pandoc.ImageSize ( dimension, Dimension(Pixel), Direction(..),
+                               showInInch )
+import Text.Pandoc.Options ( WriterOptions(..), WrapOption(..), isEnabled,
+                             CaptionPosition(..) )
 import Data.Text (Text)
 import Data.List (intercalate, intersperse)
 import Data.Bifunctor (first, second)
@@ -26,8 +29,7 @@ import Network.URI (unEscapeString)
 import qualified Data.Text as T
 import Control.Monad.State ( StateT, evalStateT, gets, modify )
 import Text.Pandoc.Writers.Shared ( metaToContext, defField, resetField,
-                                    lookupMetaString,
-                                    isOrderedListMarker )
+                                    lookupMetaString )
 import Text.Pandoc.Shared (isTightList, orderedListMarkers, tshow)
 import Text.Pandoc.Writers.Math (convertMath)
 import qualified Text.TeXMath as TM
@@ -36,7 +38,7 @@ import Text.DocTemplates (renderTemplate)
 import Text.Pandoc.Extensions (Extension(..))
 import Text.Collate.Lang (Lang(..), parseLang)
 import Text.Printf (printf)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isDigit)
 import Data.Maybe (fromMaybe)
 
 -- | Convert Pandoc to Typst.
@@ -67,6 +69,9 @@ pandocToTypst options (Pandoc meta blocks) = do
               (fmap chomp . inlinesToTypst)
               meta
   main <- blocksToTypst blocks
+  let toPosition :: CaptionPosition -> Text
+      toPosition CaptionAbove = "top"
+      toPosition CaptionBelow = "bottom"
   let context = defField "body" main
               $ defField "toc" (writerTableOfContents options)
               $ (if isEnabled Ext_citations options
@@ -80,7 +85,14 @@ pandocToTypst options (Pandoc meta blocks) = do
                         Right l ->
                           resetField "lang" (langLanguage l) .
                           maybe id (resetField "region") (langRegion l))
+              $ defField "csl" (lookupMetaString "citation-style" meta) -- #10661
+              $ defField "smart" (isEnabled Ext_smart options)
               $ defField "toc-depth" (tshow $ writerTOCDepth options)
+              $ defField "figure-caption-position"
+                   (toPosition $ writerFigureCaptionPosition options)
+              $ defField "table-caption-position"
+                   (toPosition $ writerTableCaptionPosition options)
+              $ defField "page-numbering" ("1" :: Text)
               $ (if writerNumberSections options
                     then defField "numbering" ("1.1.1.1.1" :: Text)
                     else id)
@@ -119,7 +131,15 @@ toTypstTextElement typstTextAttrs content = "#text" <> toTypstPropsListParens ty
 
 toTypstSetText :: [(Text, Text)] -> Doc Text
 toTypstSetText [] = ""
-toTypstSetText typstTextAttrs = "#set text" <> parens (toTypstPropsListSep typstTextAttrs) <> "; " -- newline?
+toTypstSetText typstTextAttrs = "set text" <> parens (toTypstPropsListSep typstTextAttrs) <> "; "
+
+toTypstPoundSetText :: [(Text, Text)] -> Doc Text
+toTypstPoundSetText [] = ""
+toTypstPoundSetText typstTextAttrs = "#" <> toTypstSetText typstTextAttrs
+
+toTypstBracesSetText :: [(Text, Text)] -> Doc Text -> Doc Text
+toTypstBracesSetText [] x = "#" <> x
+toTypstBracesSetText typstTextAttrs x = "#" <> braces (toTypstSetText typstTextAttrs <> x)
 
 blocksToTypst :: PandocMonad m => [Block] -> TW m (Doc Text)
 blocksToTypst blocks = vcat <$> mapM blockToTypst blocks
@@ -127,8 +147,12 @@ blocksToTypst blocks = vcat <$> mapM blockToTypst blocks
 blockToTypst :: PandocMonad m => Block -> TW m (Doc Text)
 blockToTypst block =
   case block of
-    Plain inlines -> inlinesToTypst inlines
-    Para inlines -> ($$ blankline) <$> inlinesToTypst inlines
+    Plain inlines -> do
+      opts <- gets stOptions
+      inlinesToTypst (addLineStartEscapes opts inlines)
+    Para inlines -> do
+      opts <- gets stOptions
+      ($$ blankline) <$> inlinesToTypst (addLineStartEscapes opts inlines)
     Header level (ident,cls,_) inlines -> do
       contents <- inlinesToTypst inlines
       let lab = toLabel FreestandingLabel ident
@@ -177,8 +201,9 @@ blockToTypst block =
                                   parens (
                                     "numbering: " <>
                                     doubleQuoted
-                                      (head (orderedListMarkers
-                                             (1, sty, delim))) <>
+                                     (case orderedListMarkers (1, sty, delim) of
+                                          (m:_) -> m
+                                          [] -> "1.") <>
                                     ", start: " <>
                                       text (show start) )) $$
                                x $$
@@ -246,7 +271,7 @@ blockToTypst block =
                      ColSpan n -> [ "colspan: " <> tshow n ]) ++
                   map formatTypstProp typstAttrs2
             cellContents <- blocksToTypst bs
-            let contents2 = brackets (toTypstSetText typstTextAttrs <> cellContents)
+            let contents2 = brackets (toTypstPoundSetText typstTextAttrs <> cellContents)
             pure $ if null cellattrs
                       then contents2
                       else "table.cell" <>
@@ -275,7 +300,7 @@ blockToTypst block =
       header <- fromHead thead
       footer <- fromFoot tfoot
       body <- vcat <$> mapM fromTableBody tbodies
-      let table = toTypstSetText typstTextAttrs <> "#table("
+      let table = "table("
             $$ nest 2
                 (  "columns: " <> columns <> ","
                 $$ "align: " <> alignarray <> ","
@@ -286,11 +311,11 @@ blockToTypst block =
             )
             $$ ")"
       return $ if "typst:no-figure" `elem` tabclasses
-        then table
+        then toTypstBracesSetText typstTextAttrs table
         else "#figure("
             $$
             nest 2
-            ("align(center)[" <> table <> "]"
+            ("align(center)[" <> toTypstPoundSetText typstTextAttrs <> "#" <> table <> "]"
               $$ capt'
               $$ typstFigureKind
               $$ ")")
@@ -298,12 +323,13 @@ blockToTypst block =
           $$ blankline
     Figure (ident,_,_) (Caption _mbshort capt) blocks -> do
       caption <- blocksToTypst capt
+      opts <-  gets stOptions
       contents <- case blocks of
                      -- don't need #box around block-level image
-                     [Para [Image (_,_,kvs) _ (src, _)]]
-                       -> pure $ mkImage False src kvs
-                     [Plain [Image (_,_,kvs) _ (src, _)]]
-                       -> pure $ mkImage False src kvs
+                     [Para [Image attr _ (src, _)]]
+                       -> pure $ mkImage opts False src attr
+                     [Plain [Image attr _ (src, _)]]
+                       -> pure $ mkImage opts False src attr
                      _ -> brackets <$> blocksToTypst blocks
       let lab = toLabel FreestandingLabel ident
       return $ "#figure(" <> nest 2 ((contents <> ",")
@@ -318,7 +344,7 @@ blockToTypst block =
       let (typstAttrs,typstTextAttrs) = pickTypstAttrs kvs
       contents <- blocksToTypst blocks
       return $ "#block" <> toTypstPropsListParens typstAttrs <> "["
-        $$ toTypstSetText typstTextAttrs <> contents
+        $$ toTypstPoundSetText typstTextAttrs <> contents
         $$ ("]" <+> lab)
 
 defListItemToTypst :: PandocMonad m => ([Inline], [[Block]]) -> TW m (Doc Text)
@@ -342,8 +368,9 @@ inlineToTypst :: PandocMonad m => Inline -> TW m (Doc Text)
 inlineToTypst inline =
   case inline of
     Str txt -> do
+      opts <-  gets stOptions
       context <- gets stEscapeContext
-      return $ escapeTypst context txt
+      return $ escapeTypst (isEnabled Ext_smart opts) context txt
     Space -> return space
     SoftBreak -> do
       wrapText <- gets $ writerWrapText . stOptions
@@ -387,11 +414,17 @@ inlineToTypst inline =
           contents <- inlinesToTypst inlines
           return $ toTypstTextElement typstTextAttrs contents <> lab
     Quoted quoteType inlines -> do
-      let q = case quoteType of
-                   DoubleQuote -> literal "\""
-                   SingleQuote -> literal "'"
+      opts <- gets stOptions
+      let smart = isEnabled Ext_smart opts
       contents <- inlinesToTypst inlines
-      return $ q <> contents <> q
+      return $
+        case quoteType of
+           DoubleQuote
+             | smart -> "\"" <> contents <> "\""
+             | otherwise -> "“" <> contents <> "”"
+           SingleQuote
+             | smart -> "'" <> contents <> "'"
+             | otherwise -> "‘" <> contents <> "’"
     Cite citations inlines -> do
       opts <-  gets stOptions
       if isEnabled Ext_citations opts
@@ -415,39 +448,61 @@ inlineToTypst inline =
                     (if inlines == [Str src]
                           then mempty
                           else nowrap $ brackets contents) <> endCode
-    Image (_,_,kvs) _inlines (src,_tit) -> pure $ mkImage True src kvs
+    Image attr _inlines (src,_tit) -> do
+      opts <-  gets stOptions
+      pure $ mkImage opts True src attr
     Note blocks -> do
       contents <- blocksToTypst blocks
       return $ "#footnote" <> brackets (chomp contents) <> endCode
 
 -- see #9104; need box or image is treated as block-level
-mkImage :: Bool -> Text -> [(Text, Text)] -> Doc Text
-mkImage useBox src kvs
+mkImage :: WriterOptions -> Bool -> Text -> Attr -> Doc Text
+mkImage opts useBox src attr
   | useBox = "#box" <> parens coreImage
   | otherwise = coreImage
  where
   src' = T.pack $ unEscapeString $ T.unpack src -- #9389
-  toDimAttr k =
-     case lookup k kvs of
-       Just v -> ", " <> literal k <> ": " <> literal v
-       Nothing -> mempty
-  dimAttrs = mconcat $ map toDimAttr ["height", "width"]
-  coreImage = "image" <> parens (doubleQuoted src' <> dimAttrs)
+  showDim (Pixel a) = literal (showInInch opts (Pixel a) <> "in")
+  showDim dim = text (show dim)
+  dimAttrs =
+     (case dimension Height attr of
+        Nothing -> mempty
+        Just dim -> ", height: " <> showDim dim) <>
+     (case dimension Width attr of
+        Nothing -> mempty
+        Just dim -> ", width: " <> showDim dim)
+  isData = "data:" `T.isPrefixOf` src'
+  dataSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><image xlink:href=\"" <> src' <> "\" /></svg>"
+  coreImage
+    | isData = "image.decode" <> parens(doubleQuoted dataSvg <> dimAttrs)
+    | otherwise = "image" <> parens (doubleQuoted src' <> dimAttrs)
 
 textstyle :: PandocMonad m => Doc Text -> [Inline] -> TW m (Doc Text)
-textstyle s inlines =
-  (<> endCode) . (s <>) . brackets . addEscape <$> inlinesToTypst inlines
- where
-   addEscape =
-     case inlines of
-       (Str t : _)
-         | isOrderedListMarker t -> ("\\" <>)
-         | Just (c, _) <- T.uncons t
-         , needsEscapeAtLineStart c -> ("\\" <>)
-       _ -> id
+textstyle s inlines = do
+  opts <-  gets stOptions
+  (<> endCode) . (s <>) . brackets
+    <$> inlinesToTypst (addLineStartEscapes opts inlines)
 
-escapeTypst :: EscapeContext -> Text -> Doc Text
-escapeTypst context t =
+addLineStartEscapes :: WriterOptions -> [Inline] -> [Inline]
+addLineStartEscapes opts = go True
+ where
+   go True (Str t : xs)
+        | isOrderedListMarker t = RawInline "typst" "\\" : Str t : go False xs
+        | Just (c, t') <- T.uncons t
+        , needsEscapeAtLineStart c
+        , T.null t' = RawInline "typst" "\\" : Str t : go False xs
+   go _ (SoftBreak : xs)
+        | writerWrapText opts == WrapPreserve = SoftBreak : go True xs
+   go _ (LineBreak : xs) = LineBreak : go True xs
+   go _ (x : xs) = x : go False xs
+   go _ [] = []
+
+isOrderedListMarker :: Text -> Bool
+isOrderedListMarker t = not (T.null ds) && rest == "."
+  where (ds, rest) = T.span isDigit t
+
+escapeTypst :: Bool -> EscapeContext -> Text -> Doc Text
+escapeTypst smart context t =
   (case T.uncons t of
     Just (c, _)
       | needsEscapeAtLineStart c
@@ -460,9 +515,17 @@ escapeTypst context t =
   where
     escapeChar c
       | c == '\160' = "~"
+      | c == '\8217', smart = "'" -- apostrophe
+      | c == '\8212', smart = "---" -- em dash
+      | c == '\8211', smart = "--" -- en dash
       | needsEscape c = "\\" <> T.singleton c
       | otherwise = T.singleton c
     needsEscape '\160' = True
+    needsEscape '\8217' = smart
+    needsEscape '\8212' = smart
+    needsEscape '\8211' = smart
+    needsEscape '\'' = smart
+    needsEscape '"' = smart
     needsEscape '[' = True
     needsEscape ']' = True
     needsEscape '#' = True
@@ -471,8 +534,6 @@ escapeTypst context t =
     needsEscape '@' = True
     needsEscape '$' = True
     needsEscape '\\' = True
-    needsEscape '\'' = True
-    needsEscape '"' = True
     needsEscape '`' = True
     needsEscape '_' = True
     needsEscape '*' = True
@@ -517,8 +578,7 @@ toCite cite = do
      then do
        suppl <- case citationSuffix cite of
                   [] -> pure mempty
-                  suff -> (<> endCode) . brackets
-                            <$> inlinesToTypst (eatComma suff)
+                  suff -> brackets <$> inlinesToTypst (eatComma suff)
        pure $ "@" <> literal ident' <> suppl
      else do
        let label = if T.all isIdentChar ident'

@@ -21,7 +21,7 @@ module Text.Pandoc.Writers.Markdown (
   writeCommonMark,
   writeMarkua,
   writePlain) where
-import Control.Monad (foldM, zipWithM, MonadPlus(..), when)
+import Control.Monad (foldM, zipWithM, MonadPlus(..), when, liftM)
 import Control.Monad.Reader ( asks, MonadReader(local) )
 import Control.Monad.State.Strict ( gets, modify )
 import Data.Default
@@ -447,12 +447,19 @@ blockToMarkdown' opts (Plain inlines) = do
   return $ contents <> cr
 blockToMarkdown' opts (Para inlines) =
   (<> blankline) `fmap` blockToMarkdown opts (Plain inlines)
-blockToMarkdown' opts (LineBlock lns) =
-  if isEnabled Ext_line_blocks opts
-  then do
-    mdLines <- mapM (inlineListToMarkdown opts) lns
-    return $ vcat (map (hang 2 (literal "| ")) mdLines) <> blankline
-  else blockToMarkdown opts $ linesToPara lns
+blockToMarkdown' opts (LineBlock lns) = do
+  variant <- asks envVariant
+  case variant of
+    PlainText -> do
+      let emptyToBlank l = if isEmpty l then blankline else l
+      mdLines <- mapM (liftM emptyToBlank . inlineListToMarkdown opts) lns
+      return $ vcat mdLines <> blankline
+    _ ->
+      if isEnabled Ext_line_blocks opts
+      then do
+        mdLines <- mapM (inlineListToMarkdown opts) lns
+        return $ vcat (map (hang 2 (literal "| ")) mdLines) <> blankline
+      else blockToMarkdown opts $ linesToPara lns
 blockToMarkdown' opts b@(RawBlock f str) = do
   variant <- asks envVariant
   let Format fmt = f
@@ -463,16 +470,18 @@ blockToMarkdown' opts b@(RawBlock f str) = do
   let renderEmpty = mempty <$ report (BlockNotRendered b)
   case variant of
     PlainText
-      | f == "plain" -> return $ literal str <> literal "\n"
+      | f == "plain" -> return $ nest 0 (literal str) <> literal "\n"
     Commonmark
       | f `elem` ["gfm", "commonmark", "commonmark_x", "markdown"]
-         -> return $ literal str $$ blankline
+         -> return $ nest 0 (literal str) $$ blankline
       | f `elem` ["html", "html5", "html4"]
          -> return $ literal (removeBlankLinesInHTML str) $$ blankline
     Markdown
       | f `elem` ["markdown", "markdown_github", "markdown_phpextra",
                   "markdown_mmd", "markdown_strict"]
-         -> return $ literal str <> literal "\n"
+        -- the 'nest 0' ensures that leading and trailing newlines
+        -- don't get collapsed. See #10477 for context;
+         -> return $ nest 0 (literal str) <> literal "\n"
     Markua -> renderEmpty
     _ | f `elem` ["html", "html5", "html4"]
       , isEnabled Ext_markdown_attribute opts
@@ -610,7 +619,7 @@ blockToMarkdown' opts t@(Table (ident,_,_) blkCapt specs thead tbody tfoot) = do
   let isSimple = hasSimpleCells && all (==0) widths
   let isPlainBlock (Plain _) = True
       isPlainBlock _         = False
-  let hasBlocks = not (all isPlainBlock $ concat . concat $ headers:rows)
+  let hasBlocks = not (all (all (all isPlainBlock)) $ headers:rows)
   let padRow r = case numcols - length r of
                        x | x > 0 -> r ++ replicate x empty
                          | otherwise -> r
@@ -620,45 +629,53 @@ blockToMarkdown' opts t@(Table (ident,_,_) blkCapt specs thead tbody tfoot) = do
   let widths' = case numcols - length widths of
                      x | x > 0 -> widths ++ replicate x 0.0
                        | otherwise -> widths
-  (nst,tbl) <-
-     case True of
-          _ | isSimple &&
-              isEnabled Ext_simple_tables opts -> do
-                rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
-                rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
-                           rows
-                (nest 2,) <$> pandocTable opts False (all null headers)
-                                aligns' widths' rawHeaders rawRows
-            | isSimple &&
-              isEnabled Ext_pipe_tables opts -> do
-                rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
-                rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
-                           rows
-                (id,) <$> pipeTable opts (all null headers) aligns' widths'
-                            rawHeaders rawRows
-            | not hasBlocks &&
-              isEnabled Ext_multiline_tables opts -> do
-                rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
-                rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
-                           rows
-                (nest 2,) <$> pandocTable opts True (all null headers)
-                                aligns' widths' rawHeaders rawRows
-            | isEnabled Ext_grid_tables opts &&
-               writerColumns opts >= 8 * numcols -> (id,) <$>
-                gridTable opts blockListToMarkdown
-                  (all null headers) aligns' widths' headers rows
-            | hasSimpleCells &&
-              isEnabled Ext_pipe_tables opts -> do
-                rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
-                rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
-                           rows
-                (id,) <$> pipeTable opts (all null headers) aligns' widths'
-                           rawHeaders rawRows
-            | isEnabled Ext_raw_html opts -> fmap (id,) $
-                   literal . removeBlankLinesInHTML <$>
-                   writeHtml5String opts{ writerTemplate = Nothing } (Pandoc nullMeta [t])
-            | otherwise -> return (id, literal "[TABLE]")
-  return $ nst (tbl $$ caption''') $$ blankline
+  case True of
+     _ | isSimple &&
+         isEnabled Ext_simple_tables opts -> do
+           rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
+           rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
+                      rows
+           tbl <- pandocTable opts False (all null headers)
+                      aligns' widths' rawHeaders rawRows
+           return $ nest 2 (tbl $$ caption''') $$ blankline
+       | isSimple &&
+         isEnabled Ext_pipe_tables opts -> do
+           rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
+           rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
+                      rows
+           tbl <- pipeTable opts (all null headers) aligns' widths'
+                     rawHeaders rawRows
+           return $ (tbl $$ caption''') $$ blankline
+       | not hasBlocks &&
+         isEnabled Ext_multiline_tables opts -> do
+           rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
+           rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
+                      rows
+           tbl <- pandocTable opts True (all null headers)
+                     aligns' widths' rawHeaders rawRows
+           return $ nest 2 (tbl $$ caption''') $$ blankline
+       | isEnabled Ext_grid_tables opts &&
+          writerColumns opts >= 8 * numcols -> do
+           tbl <- gridTable opts blockListToMarkdown
+             (all null headers) aligns' widths' headers rows
+           return $ (tbl $$ caption''') $$ blankline
+       | hasSimpleCells &&
+         isEnabled Ext_pipe_tables opts -> do
+           rawHeaders <- padRow <$> mapM (blockListToMarkdown opts) headers
+           rawRows <- mapM (fmap padRow . mapM (blockListToMarkdown opts))
+                      rows
+           tbl <- pipeTable opts (all null headers) aligns' widths'
+                    rawHeaders rawRows
+           return $ (tbl $$ caption''') $$ blankline
+       | isEnabled Ext_raw_html opts -> do -- HTML fallback
+           tbl <- literal . removeBlankLinesInHTML <$>
+                     writeHtml5String opts{ writerTemplate = Nothing }
+                     (Pandoc nullMeta [t])
+           return $ tbl $$ blankline  -- caption is in the HTML table
+       | otherwise
+         -> do
+           report (BlockNotRendered t)
+           return $ (literal "[TABLE]" $$ caption''') $$ blankline
 blockToMarkdown' opts (BulletList items) = do
   contents <- inList $ mapM (bulletListItemToMarkdown opts) items
   return $ (if isTightList items then vcat else vsep)
@@ -765,7 +782,10 @@ bulletListItemToMarkdown opts bs = do
   let start = case variant of
               Markua -> "* "
               Commonmark -> "- "
-              _ -> "- " <> T.replicate (writerTabStop opts - 2) " "
+              Markdown
+                | isEnabled Ext_four_space_rule opts
+                  -> "- " <> T.replicate (writerTabStop opts - 2) " "
+              _ -> "- "
   -- remove trailing blank line if item ends with a tight list
   let contents' = if itemEndsWithTightList bs
                      then chomp contents <> cr

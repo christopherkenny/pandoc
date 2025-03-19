@@ -20,6 +20,7 @@ import qualified Codec.Picture as JP
 import qualified Control.Exception as E
 import Control.Monad.Trans (MonadIO (..))
 import Control.Monad (foldM_)
+import Crypto.Hash (hashWith, SHA1(SHA1))
 import qualified Data.ByteString as BS
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as BL
@@ -52,7 +53,6 @@ import qualified Text.Pandoc.UTF8 as UTF8
 import Text.Pandoc.Walk (walkM)
 import Text.Pandoc.Writers.Shared (getField, metaToContext)
 import Control.Monad.Catch (MonadMask)
-import Data.Digest.Pure.SHA (sha1, showDigest)
 #ifdef _WINDOWS
 import Data.List (intercalate)
 #endif
@@ -91,12 +91,12 @@ makePDF program pdfargs writer opts doc =
                else [f]
       source <- writer opts doc
       verbosity <- getVerbosity
-      liftIO $ toPdfViaTempFile verbosity program pdfargs mkOutArgs source
+      liftIO $ toPdfViaTempFile verbosity program pdfargs mkOutArgs ".html" source
     "typst" -> do
       source <- writer opts doc
       verbosity <- getVerbosity
       liftIO $
-        toPdfViaTempFile verbosity program ("compile":pdfargs) (:[]) source
+        toPdfViaTempFile verbosity program ("compile":pdfargs) (:[]) ".typ" source
     "pdfroff" -> do
       source <- writer opts doc
       let paperargs =
@@ -184,7 +184,7 @@ makeWithWkhtmltopdf program pdfargs writer opts doc@(Pandoc meta _) = do
                  -- see #6474
   source <- writer opts doc
   verbosity <- getVerbosity
-  liftIO $ toPdfViaTempFile verbosity program args (:[]) source
+  liftIO $ toPdfViaTempFile verbosity program args (:[]) ".html" source
 
 handleImages :: (PandocMonad m, MonadIO m)
              => WriterOptions
@@ -236,7 +236,7 @@ convertImage opts tmpdir fname = do
                  E.catch (Right pngOut <$ JP.savePngImage pngOut img) $
                      \(e :: E.SomeException) -> return (Left (tshow e))
   where
-    sha = showDigest (sha1 (UTF8.fromStringLazy fname))
+    sha = show (hashWith SHA1 (UTF8.fromString fname))
     pngOut = normalise $ tmpdir </> sha <.> "png"
     pdfOut = normalise $ tmpdir </> sha <.> "pdf"
     svgIn = normalise fname
@@ -411,11 +411,11 @@ runTeXProgram program args tmpDir outDir = do
                          , k /= "TEXINPUTS" && k /= "TEXMFOUTPUT"]
     liftIO (UTF8.readFile file) >>=
       showVerboseInfo (Just tmpDir) program programArgs env''
-    go env'' programArgs (1 :: Int) Nothing
+    go env'' programArgs (1 :: Int)
  where
    file = tmpDir ++ "/input.tex"
    outfile = outDir ++ "/input.pdf"
-   go env'' programArgs runNumber oldTocHash = do
+   go env'' programArgs runNumber = do
      let maxruns = 4 -- stop if warnings present after 4 runs
      report $ MakePDFInfo ("LaTeX run number " <> tshow runNumber) mempty
      (exit, out) <- liftIO $ E.catch
@@ -423,29 +423,21 @@ runTeXProgram program args tmpDir outDir = do
        (handlePDFProgramNotFound program)
      report $ MakePDFInfo "LaTeX output" (UTF8.toText $ BL.toStrict out)
      -- parse log to see if we need to rerun LaTeX
-     let logFile = replaceExtension file ".log"
+     let logFile = replaceExtension outfile ".log"
      logExists <- fileExists logFile
      logContents <- if logExists
                        then BL.fromStrict <$> readFileStrict logFile
                        else return mempty
      let rerunWarnings = checkForRerun logContents
-     tocHash <- do
-       let tocFile = replaceExtension file ".toc"
-       tocFileExists <- fileExists tocFile
-       if tocFileExists
-          then do
-            tocContents <- BL.fromStrict <$> readFileStrict tocFile
-            pure $ Just $! sha1 tocContents
-          else pure Nothing
-     -- compare hash of toc to former hash to see if it changed (#9295)
-     let rerunWarnings' = rerunWarnings ++
-                           ["TOC changed" | tocHash /= oldTocHash ]
+     tocFileExists <- fileExists (replaceExtension outfile ".toc")
+       -- if we have a TOC we always need 3 runs, see #10308
+     let rerunWarnings' = rerunWarnings ++ ["TOC is present" | tocFileExists]
      if not (null rerunWarnings') && runNumber < maxruns
         then do
           report $ MakePDFInfo "Rerun needed"
                     (T.intercalate "\n"
                       (map (UTF8.toText . BC.toStrict) rerunWarnings'))
-          go env'' programArgs (runNumber + 1) tocHash
+          go env'' programArgs (runNumber + 1)
        else do
           (log', pdf) <- getResultingPDF (Just logFile) outfile
           return (exit, fromMaybe out log', pdf)
@@ -477,10 +469,11 @@ toPdfViaTempFile  ::
           -> String       -- ^ Program (program name or path)
           -> [String]     -- ^ Args to program
           -> (String -> [String]) -- ^ Construct args for output file
+          -> String       -- ^ extension to use for input file (e.g. '.html')
           -> Text         -- ^ Source
           -> IO (Either ByteString ByteString)
-toPdfViaTempFile verbosity program args mkOutArgs source =
-  withTempFile "." "toPdfViaTempFile.html" $ \file h1 ->
+toPdfViaTempFile verbosity program args mkOutArgs extension source =
+  withTempFile "." ("toPdfViaTempFile" <> extension) $ \file h1 ->
     withTempFile "." "toPdfViaTempFile.pdf" $ \pdfFile h2 -> do
       hClose h1
       hClose h2

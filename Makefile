@@ -28,8 +28,12 @@ build: ## build executable
 	  $(CABALOPTS) pandoc-cli
 .PHONY: build
 
+prof: ## build with profiling and optimizations
+	cabal build --enable-profiling all
+.PHONY: prof
+
 binpath: ## print path of built pandoc executable
-	@cabal list-bin $(CABALOPTS) --ghc-options='$(GHCOPTS)' pandoc-cli
+	@cabal list-bin -v0 $(CABALOPTS) --ghc-options='$(GHCOPTS)' pandoc-cli
 .PHONY: binpath
 
 ghcid: ## run ghcid
@@ -84,7 +88,7 @@ check-cabal: git-files.txt sdist-files.txt
 	@for pkg in . pandoc-lua-engine pandoc-server pandoc-cli; \
 	do \
 	     pushd $$pkg ; \
-	     cabal check ; \
+	     cabal check --ignore=missing-upper-bounds ; \
 	     cabal outdated ; \
 	     popd ; \
 	done

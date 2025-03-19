@@ -898,7 +898,11 @@ dimenarg = try $ do
   let s = s1 <> s2
   let (num, rest) = T.span (\c -> isDigit c || c == '.') s
   guard $ T.length num > 0
-  guard $ rest `elem` ["", "pt","pc","in","bp","cm","mm","dd","cc","sp"]
+  guard $ rest `elem`
+    ["", "pt","pc","in","bp","cm","mm","dd","cc","sp","ex","em",
+     "mu", -- "mu" in math mode only
+     "px" -- "px" with pdftex and luatex only
+    ]
   return $ T.pack ['=' | ch] <> minus <> s
 
 ignore :: (Monoid a, PandocMonad m) => Text -> ParsecT s u m a
@@ -930,6 +934,7 @@ withRaw parser = do
 
 keyval :: PandocMonad m => LP m (Text, Text)
 keyval = try $ do
+  sp
   key <- untokenize <$> many1 (notFollowedBy (symbol '=') >>
                          (symbol '-' <|> symbol '_' <|> satisfyTok isWordTok))
   sp
@@ -948,6 +953,7 @@ keyval = try $ do
                                 Tok _ Symbol "{" -> False
                                 Tok _ Symbol "}" -> False
                                 _                -> True)))))
+  sp
   optional (symbol ',')
   sp
   return (key, T.strip val)

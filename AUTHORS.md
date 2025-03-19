@@ -3,6 +3,7 @@
 - Aaron Wolen
 - Adelar da Silva Queiróz
 - Agustín Martín Barbero
+- Akash Patel
 - Akos Marton
 - Albert Krewinkel
 - Alex Ivkin
@@ -22,6 +23,7 @@
 - Amy de Buitléir
 - Anabra
 - Anders Waldenborg
+- Andreas Deininger
 - Andreas Lööw
 - Andreas Scherer
 - Andres Freund
@@ -67,6 +69,7 @@
 - Cezary Drożak
 - Chandrahas77
 - Charanjit Singh
+- Charles Tapley Hoyt
 - Charlotte Koch
 - Chris Black
 - Christian Conkle
@@ -113,6 +116,7 @@
 - Erik Rask
 - Ethan Riley
 - Étienne Bersac
+- Evan Silberman
 - Even Brenden
 - Ezwal
 - Fabián Heredia Montiel
@@ -146,6 +150,7 @@
 - Gwern Branwen
 - Hamish Mackenzie
 - Hans-Peter Deifel
+- Hendrik Erz
 - Heiko Schlittermann
 - Henrik Tramberend
 - Henry de Valence
@@ -187,12 +192,14 @@
 - Jeff Runningen
 - Jens Getreu
 - Jens Petersen
+- Jens Oehlschlägel
 - Jesse Hathaway
 - Jeremie Knuesel
 - Jérémy Bobbio
 - Jeroen de Haas
 - Jerry Sky
 - Jesse Rosenthal
+- Jez Cope
 - Joe Hermaszewski
 - Joe Hillenbrand
 - John KetzerX
@@ -202,6 +209,7 @@
 - John Purnell
 - Jonas Scholl
 - Jonas Smedegaard
+- Jonathan
 - Jonathan Daugherty
 - Jonathan Dönszelmann
 - Jose Luis Duran
@@ -236,14 +244,17 @@
 - Lucas Escot
 - Lucas Viana
 - Lucas V. R
+- Luis Rivera
 - Luke Plant
 - Marc Schreiber
 - Marcin Serwin
 - Mario Lang
+- Mark Gardner
 - Mark Szepieniec
 - Mark Wright
 - Martin Joerg
 - Martin Linn
+- Martin Michlmayr
 - Martín Pozo
 - Masataka Ogawa
 - Masayoshi Takahashi
@@ -298,12 +309,14 @@
 - Oliver Fabel
 - Oliver Matthews
 - Olivier Benz
+- Olivier Dossmann
 - Ophir Lifshitz
 - Or Neeman
 - OvidiusCicero
 - Owen McGrath
 - Pablo Rodríguez
 - Pascal Wagler
+- Pau RE
 - Paul Rivier
 - Paul Tilley
 - Paulo Tanimoto
@@ -336,9 +349,12 @@
 - Sam May
 - Samuel Tardieu
 - Saumel Lemmenmeier
+- Santiago Zarate
 - Sascha Wilde
 - Scott Morrison
 - Sebastian Talmon
+- Sebbones
+- Sen-wen Deng
 - Sergei Trofimovich
 - Sergey Astanin
 - Seth Speaks
@@ -355,9 +371,13 @@
 - Stephan Daus
 - Stephan Meijer
 - Stephen Altamirano
+- Stephen Huan
+- Stephen Reindl
+- Stéphane Guillou
 - Sukil Etxenike
 - Sukka
 - Sumit Sahrawat
+- Suraj Patil
 - Sven Wick
 - TEC
 - Tarik Graba
@@ -367,6 +387,7 @@
 - Thomas Hodgson
 - Thomas Soeiro
 - Thomas Weißschuh
+- Tiago-Manzato
 - Tim Lin
 - Tim Stewart
 - Tim Wisotzki
@@ -380,6 +401,7 @@
 - Toni Dietze
 - Tristan Stenner
 - Tristan de Cacqueray
+- Tristano Ajmone
 - Tuong Nguyen Manh
 - Uli Köhler
 - Urs Liska
@@ -403,6 +425,7 @@
 - Wout Gevaert
 - Xavier Olive
 - Yan Pashkovsky
+- Yehuda Katz
 - YI
 - Yoan Blanc
 - Yuchen Pei
@@ -417,18 +440,21 @@
 - bumper314
 - chinapedia
 - cholonam
+- closeobserve
 - csforste
 - d-dorazio
 - damon-sava-stanley
 - dbecher-ito
 - ebiim
 - ech0
+- etclub
 - favonia
 - guqicun
 - harabat
 - hseg
 - infinity0x
 - jeongminkim-islab
+- josch
 - kaizshang91
 - lawcho
 - lifeunleaded
@@ -466,6 +492,7 @@
 - tecosaur
 - tgkokk
 - the-solipsist
+- thomjur
 - thsutton
 - thron7
 - timo-a
