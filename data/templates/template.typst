@@ -112,7 +112,6 @@
     #text(weight: "semibold")[Abstract] #h(1em) #abstract
     ]
   }
-  ]
 
   doc
 }
