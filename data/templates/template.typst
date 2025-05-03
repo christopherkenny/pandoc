@@ -30,7 +30,7 @@
   sectionnumbering: none,
   linkcolor: none,
   citecolor: none,
-  toccolor: none,
+  filecolor: none,
   pagenumbering: "1",
   doc,
 ) = {
@@ -62,55 +62,56 @@
 
   show link: set text(fill: rgb(content-to-string(linkcolor))) if linkcolor != none
 
+  show link: set text(fill: rgb(content-to-string(linkcolor))) if linkcolor != none
+  show ref: set text(fill: rgb(content-to-string(citecolor))) if citecolor != none
   show link: this => {
-    if type(this.dest) == label {
-        text(this, fill: rgb(content-to-string(filecolor)))
+    if filecolor != none and type(this.dest) == label {
+      text(this, fill: rgb(content-to-string(filecolor)))
     }
-  } if filecolor != none
-  show ref: this => {
-    text(this, fill: rgb(content-to-string(citecolor)))
-  } if citecolor != none
-
-  if title != none {
-    align(center)[#block(inset: 2em)[
-      #text(weight: "bold", size: 1.5em)[#title #if thanks != none {
-            footnote(thanks, numbering: "*")
-            counter(footnote).update(n => n - 1)
-          }]
-      #(if subtitle != none {
-        parbreak()
-        text(weight: "bold", size: 1.25em)[#subtitle]
-      })
-    ]]
   }
 
-  #if authors != none and authors != [] {
-    let count = authors.len()
-    let ncols = calc.min(count, 3)
-    grid(
-      columns: (1fr,) * ncols,
-      row-gutter: 1.5em,
-      ..authors.map(author =>
-          align(center)[
-            #author.name \
-            #author.affiliation \
-            #author.email
-          ]
+    place(top, float: true, scope: "parent", clearance: 4mm)[
+    #if title != none {
+      align(center)[#block(inset: 2em)[
+          #text(weight: "bold", size: 1.5em)[#title #if thanks != none {
+              footnote(thanks, numbering: "*")
+              counter(footnote).update(n => n - 1)
+            }]
+          #(
+            if subtitle != none {
+              parbreak()
+              text(weight: "bold", size: 1.25em)[#subtitle]
+            }
+          )
+        ]]
+    }
+
+    #if authors != none and authors != [] {
+      let count = authors.len()
+      let ncols = calc.min(count, 3)
+      grid(
+        columns: (1fr,) * ncols,
+        row-gutter: 1.5em,
+        ..authors.map(author => align(center)[
+          #author.name \
+          #author.affiliation \
+          #author.email
+        ])
       )
-    )
-  }
+    }
 
-  #if date != none {
-    align(center)[#block(inset: 1em)[
-      #date
-    ]]
-  }
+    #if date != none {
+      align(center)[#block(inset: 1em)[
+          #date
+        ]]
+    }
 
-  #if abstract != none {
-    block(inset: 2em)[
-    #text(weight: "semibold")[Abstract] #h(1em) #abstract
-    ]
-  }
+    #if abstract != none {
+      block(inset: 2em)[
+        #text(weight: "semibold")[Abstract] #h(1em) #abstract
+      ]
+    }
+  ]
 
   doc
 }

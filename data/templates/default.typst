@@ -107,8 +107,8 @@ $endif$
 $if(citecolor)$
   citecolor: [$citecolor$],
 $endif$
-$if(toccolor)$
-  toccolor: [$toccolor$],
+$if(filecolor)$
+  filecolor: [$filecolor$],
 $endif$
   pagenumbering: $if(page-numbering)$"$page-numbering$"$else$none$endif$,
   cols: $if(columns)$$columns$$else$1$endif$,
