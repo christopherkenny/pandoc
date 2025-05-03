@@ -68,7 +68,7 @@
     }
   }
 
-  place(top, float: true, scope: "parent", clearance: 4mm)[
+  block(below: 4mm)[
     #if title != none {
       align(center)[#block(inset: 2em)[
           #text(weight: "bold", size: 1.5em)[#title #if thanks != none {
