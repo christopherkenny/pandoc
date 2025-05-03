@@ -28,9 +28,9 @@
   codefont: none,
   linestretch: 1,
   sectionnumbering: none,
-  linkcolor: ["#800000"],
-  citecolor: ["#0000FF"],
-  toccolor: ["#800000"],
+  linkcolor: none,
+  citecolor: none,
+  toccolor: none,
   pagenumbering: "1",
   doc,
 ) = {
@@ -55,25 +55,21 @@
            font: font,
            size: fontsize)
 
-  if mathfont != none {
-    show math.equation: set text(font: mathfont)
-  }
-  if codefont != none {
-    show raw: set text(font: codefont)
-  }
+  show math.equation: set text(font: mathfont) if mathfont != none
+  show raw: set text(font: codefont) if codefont != none
 
   set heading(numbering: sectionnumbering)
 
-  show link: set text(fill: rgb(content-to-string(linkcolor)))
+  show link: set text(fill: rgb(content-to-string(linkcolor))) if linkcolor != none
 
   show link: this => {
     if type(this.dest) == label {
         text(this, fill: rgb(content-to-string(filecolor)))
     }
-  }
+  } if filecolor != none
   show ref: this => {
     text(this, fill: rgb(content-to-string(citecolor)))
-  }
+  } if citecolor != none
 
   if title != none {
     align(center)[#block(inset: 2em)[
