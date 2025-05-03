@@ -61,8 +61,6 @@
   set heading(numbering: sectionnumbering)
 
   show link: set text(fill: rgb(content-to-string(linkcolor))) if linkcolor != none
-
-  show link: set text(fill: rgb(content-to-string(linkcolor))) if linkcolor != none
   show ref: set text(fill: rgb(content-to-string(citecolor))) if citecolor != none
   show link: this => {
     if filecolor != none and type(this.dest) == label {
@@ -70,7 +68,7 @@
     }
   }
 
-    place(top, float: true, scope: "parent", clearance: 4mm)[
+  place(top, float: true, scope: "parent", clearance: 4mm)[
     #if title != none {
       align(center)[#block(inset: 2em)[
           #text(weight: "bold", size: 1.5em)[#title #if thanks != none {
