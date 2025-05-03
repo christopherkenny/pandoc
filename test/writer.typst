@@ -48,8 +48,8 @@
   region: "US",
   font: (),
   fontsize: 11pt,
-  mathfont: "New Computer Modern Math",
-  codefont: "DejaVu Sans Mono",
+  mathfont: none,
+  codefont: none,
   linestretch: 1,
   sectionnumbering: none,
   linkcolor: ["#800000"],
@@ -78,8 +78,14 @@
            region: region,
            font: font,
            size: fontsize)
-  show math.equation: set text(font: mathfont)
-  show raw: set text(font: codefont)
+
+  if mathfont != none {
+    show math.equation: set text(font: mathfont)
+  }
+  if codefont != none {
+    show raw: set text(font: codefont)
+  }
+
   set heading(numbering: sectionnumbering)
 
   show link: set text(fill: rgb(content-to-string(linkcolor)))
