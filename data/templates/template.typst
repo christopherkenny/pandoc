@@ -44,7 +44,7 @@
     margin: margin,
     numbering: pagenumbering,
   )
-  
+
   set par(
     justify: true,
     leading: linestretch * 0.65em
