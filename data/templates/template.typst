@@ -15,6 +15,7 @@
   authors: (),
   keywords: (),
   date: none,
+  abstract-title: none,
   abstract: none,
   thanks: none,
   cols: 1,
@@ -107,7 +108,7 @@
 
     #if abstract != none {
       block(inset: 2em)[
-        #text(weight: "semibold")[Abstract] #h(1em) #abstract
+        #text(weight: "semibold")[#abstract-title] #h(1em) #abstract
       ]
     }
   ]
