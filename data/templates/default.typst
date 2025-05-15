@@ -71,6 +71,9 @@ $endif$
 $if(region)$
   region: "$region$",
 $endif$
+$if(abstract-title)$
+  abstract-title: [$abstract-title$],
+$endif$
 $if(abstract)$
   abstract: [$abstract$],
 $endif$
